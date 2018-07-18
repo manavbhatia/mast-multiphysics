@@ -126,9 +126,7 @@ namespace MAST {
          *    This is only done on the current element for which this
          *    object has been initialized.
          */
-        virtual void evaluate_sensitivity(const MAST::FunctionBase& f) {
-            libmesh_error(); // not yet implemented
-        }
+        virtual void evaluate_sensitivity(const MAST::FunctionBase& p);
         
         /*!
          *    this evaluates all relevant shape sensitivity components on
@@ -185,6 +183,11 @@ namespace MAST {
          *    integrated value of the force
          */
         Real            _force;
+
+        /*!
+         *    integrated value of the sensitivity of force
+         */
+        Real            _force_sens;
     };
 }
 

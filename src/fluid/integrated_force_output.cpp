@@ -111,6 +111,31 @@ MAST::IntegratedForceOutput::evaluate() {
 }
 
 
+
+void
+MAST::IntegratedForceOutput::evaluate_sensitivity(const MAST::FunctionBase& p) {
+    
+    libmesh_assert(_physics_elem);
+    
+    MAST::ConservativeFluidElementBase& e =
+    dynamic_cast<MAST::ConservativeFluidElementBase&>(*_physics_elem);
+    
+    const libMesh::Elem&
+    elem = _physics_elem->elem();
+    
+    RealVectorX
+    df  = RealVectorX::Zero(3);
+    
+    for (unsigned short int n=0; n<elem.n_sides(); n++)
+        if (this->if_evaluate_for_boundary(elem, n)) {
+            
+            e.side_integrated_force_sensitivity(p, n, df);
+            _force_sens += df.dot(_n_vec);
+        }
+}
+
+
+
 void
 MAST::IntegratedForceOutput::output_derivative_for_elem(RealVectorX& dq_dX) {
     

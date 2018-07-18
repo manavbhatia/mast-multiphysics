@@ -146,6 +146,13 @@ namespace MAST {
                               RealVectorX& f,
                               RealMatrixX* dfdX = nullptr);
         
+        /*!
+         *   computes the sensitivity of integrated force quantity
+         */
+        virtual void
+        side_integrated_force_sensitivity(const MAST::FunctionBase& p,
+                                          const unsigned int s,
+                                          RealVectorX& f);
     protected:
         
         

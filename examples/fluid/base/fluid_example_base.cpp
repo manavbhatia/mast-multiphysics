@@ -337,11 +337,6 @@ MAST::Examples::FluidExampleBase::transient_solve() {
                 << std::setw(10) << tval
                 << std::setw(30) << force.output_total() << std::endl;
 
-        //_sys->adjoint_solve(solver, force, assembly, true);
-        //_sys->solution->swap(_sys->get_adjoint_solution(0));
-        //adjoint_output.write_timestep("adjoint.exo", *_eq_sys, t_step+1, _sys->time);
-        //_sys->solution->swap(_sys->get_adjoint_solution(0));
-        
         // solve for the time-step
         solver.solve(assembly);
         solver.advance_time_step();
@@ -350,6 +345,12 @@ MAST::Examples::FluidExampleBase::transient_solve() {
         tval  += solver.dt;
         t_step++;
     }
+
+    // solve adjoint for the final solution
+    _sys->adjoint_solve(solver, force, assembly, true);
+    _sys->solution->swap(_sys->get_adjoint_solution(0));
+    libMesh::ExodusII_IO(*_mesh).write_equation_systems("adjoint.exo", *_eq_sys);
+    _sys->solution->swap(_sys->get_adjoint_solution(0));
 }
 
 
