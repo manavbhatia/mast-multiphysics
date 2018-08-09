@@ -133,6 +133,37 @@ MAST::Examples::FluidExampleBase::_init_eq_sys() {
 }
 
 
+class Velocity: public MAST::FieldFunction<RealVectorX> {
+public:
+    Velocity():
+    MAST::FieldFunction<RealVectorX>("velocity") { }
+    
+    virtual ~Velocity() {}
+    virtual void operator() (const libMesh::Point& p,
+                             const Real t,
+                             RealVectorX& v) const {
+        
+        v = RealVectorX::Zero(3);
+        Real omega = 1*942., amp = 1.e1;
+        v(1) = amp * sin( omega * t);
+    }
+    
+};
+
+class NRot: public MAST::FieldFunction<RealVectorX> {
+public:
+    NRot():
+    MAST::FieldFunction<RealVectorX>("normal_rotation") { }
+    
+    virtual ~NRot() {}
+    virtual void operator() (const libMesh::Point& p,
+                             const Real t,
+                             RealVectorX& v) const {
+        
+        v = RealVectorX::Zero(3);
+    }
+    
+};
 
 
 void
@@ -144,9 +175,15 @@ _init_boundary_conditions(const std::vector<unsigned int>& slip,
     
     for (unsigned int i=0; i<slip.size(); i++) {
         
+        Velocity *vel = new Velocity;
+        NRot     *rot = new NRot;
         MAST::BoundaryConditionBase* bc = new MAST::BoundaryConditionBase(MAST::SLIP_WALL);
+        bc->add(*vel);
+        bc->add(*rot);
         _discipline->add_side_load(slip[i], *bc);
         this->register_loading(*bc);
+        this->register_field_function(*vel);
+        this->register_field_function(*rot);
     }
     
     
@@ -253,6 +290,7 @@ MAST::Examples::FluidExampleBase::transient_solve() {
     force.set_discipline_and_system(*_discipline, *_sys_init);
     solver.set_discipline_and_system(*_discipline, *_sys_init);
     solver.set_elem_operation_object(elem_ops);
+    
     
     // initialize the solution to zero, or to something that the
     // user may have provided
