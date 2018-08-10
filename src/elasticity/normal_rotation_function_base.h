@@ -53,8 +53,20 @@ namespace MAST {
         virtual void perturbation (const libMesh::Point& p,
                                    const libMesh::Point& n,
                                    const Real t,
-                                   ValType& dn_rot) const = 0;
-        
+                                   ValType& dn_rot) const {
+            
+            libmesh_assert(false); // implement in the derived class
+        }
+
+        virtual void derivative (const MAST::FunctionBase& f,
+                                 const libMesh::Point& p,
+                                 const libMesh::Point& n,
+                                 const Real t,
+                                 ValType& dn_rot) const {
+            
+            libmesh_assert(false); // implement in the derived class
+        }
+
     protected:
         
     };

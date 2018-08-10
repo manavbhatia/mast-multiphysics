@@ -413,6 +413,7 @@ int main(int argc, char* const argv[]) {
         MAST::Examples::CylinderAnalysis2D  example(init.comm());
         example.init(*input, prefix);
         example.transient_solve();
+        example.transient_sensitivity_solve(example.get_parameter("mach"));
     }
 //    else if (case_name == "ramp_laminar_analysis_2d")
 //        fluid_analysis<MAST::RampLaminarAnalysis2D>(case_name);

@@ -147,22 +147,48 @@ public:
         Real omega = 1*942., amp = 1.e1;
         v(1) = amp * sin( omega * t);
     }
-    
+
+    virtual void derivative (const MAST::FunctionBase& f,
+                             const libMesh::Point& p,
+                             const Real t,
+                             RealVectorX& v) const {
+
+        v = RealVectorX::Zero(3);
+    }
 };
 
-class NRot: public MAST::FieldFunction<RealVectorX> {
+#include "elasticity/normal_rotation_function_base.h"
+class NRot: public MAST::NormalRotationFunctionBase<RealVectorX> {
 public:
     NRot():
-    MAST::FieldFunction<RealVectorX>("normal_rotation") { }
+    MAST::NormalRotationFunctionBase<RealVectorX>("normal_rotation") { }
     
     virtual ~NRot() {}
     virtual void operator() (const libMesh::Point& p,
+                             const libMesh::Point& n,
                              const Real t,
                              RealVectorX& v) const {
         
         v = RealVectorX::Zero(3);
     }
-    
+
+    virtual void perturbation (const libMesh::Point& p,
+                               const libMesh::Point& n,
+                               const Real t,
+                               RealVectorX& v) const {
+        
+        libmesh_assert(false);
+    }
+
+    virtual void derivative (const MAST::FunctionBase& f,
+                             const libMesh::Point& p,
+                             const libMesh::Point& n,
+                             const Real t,
+                             RealVectorX& v) const {
+        
+        v = RealVectorX::Zero(3);
+    }
+
 };
 
 
@@ -256,6 +282,9 @@ MAST::Examples::FluidExampleBase::_init_material() {
 
     // tell the discipline about the fluid values
     dynamic_cast<MAST::ConservativeFluidDiscipline*>(_discipline)->set_flight_condition(*_flight_cond);
+    MAST::Parameter
+    *mach      = new MAST::Parameter("mach", 0.);
+    this->add_parameter(*mach);
 }
 
 
@@ -290,7 +319,6 @@ MAST::Examples::FluidExampleBase::transient_solve() {
     force.set_discipline_and_system(*_discipline, *_sys_init);
     solver.set_discipline_and_system(*_discipline, *_sys_init);
     solver.set_elem_operation_object(elem_ops);
-    
     
     // initialize the solution to zero, or to something that the
     // user may have provided

@@ -803,6 +803,7 @@ MAST::ConservativeFluidElementBase::
 velocity_residual_sensitivity (const MAST::FunctionBase& p,
                                bool request_jacobian,
                                RealVectorX& f,
+                               RealMatrixX& jac_xdot,
                                RealMatrixX& jac) {
     
     return request_jacobian;
