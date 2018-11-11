@@ -122,7 +122,7 @@ namespace MAST {
 
         Real rho_e_sens_mach() const
         {
-            return q0()/mach/mach;
+            return 2.*q0()/mach;
         }
     };
     

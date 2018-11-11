@@ -801,7 +801,9 @@ MAST::NonlinearSystem::adjoint_solve(MAST::AssemblyElemOperations&       elem_op
 
 
 void
-MAST::NonlinearSystem::write_out_vector(libMesh::NumericVector<Real>& vec,
+MAST::NonlinearSystem::write_out_vector(//Real dt,
+                                        //Real t,
+                                        libMesh::NumericVector<Real>& vec,
                                         const std::string & directory_name,
                                         const std::string & data_name,
                                         const bool write_binary_vectors)

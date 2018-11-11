@@ -102,6 +102,22 @@ MAST::Examples::FluidExampleBase::initialize_solution() {
 }
 
 
+void
+MAST::Examples::FluidExampleBase::initialize_sensitivity_solution() {
+    
+    unsigned int
+    n = _mesh->mesh_dimension();
+    RealVectorX s = RealVectorX::Zero(n+2);
+    s(0) = 0.;
+    s(1) = _flight_cond->rho_u1_sens_mach();
+    s(2) = _flight_cond->rho_u2_sens_mach();
+    //if (n > 2)
+    //    s(3) = _flight_cond->rho_u3_sens_mach();
+    s(n+1) = _flight_cond->rho_e_sens_mach();
+    
+    _sys_init->initialize_solution(s);
+}
+
 
 void
 MAST::Examples::FluidExampleBase::_init_system_and_discipline() {
@@ -135,8 +151,10 @@ MAST::Examples::FluidExampleBase::_init_eq_sys() {
 
 class Velocity: public MAST::FieldFunction<RealVectorX> {
 public:
-    Velocity():
-    MAST::FieldFunction<RealVectorX>("velocity") { }
+    Velocity(Real v_freq, Real v_amp):
+    MAST::FieldFunction<RealVectorX>("velocity"),
+    _v_freq (v_freq),
+    _v_amp  (v_amp) { }
     
     virtual ~Velocity() {}
     virtual void operator() (const libMesh::Point& p,
@@ -144,8 +162,8 @@ public:
                              RealVectorX& v) const {
         
         v = RealVectorX::Zero(3);
-        Real omega = 1*942., amp = 1.e1;
-        v(1) = amp * sin( omega * t);
+        //Real omega = 1*942., amp = 1.e1;
+        v(1) = _v_amp * sin( _v_freq * t);
     }
 
     virtual void derivative (const MAST::FunctionBase& f,
@@ -155,6 +173,9 @@ public:
 
         v = RealVectorX::Zero(3);
     }
+    
+protected:
+    Real _v_freq, _v_amp;
 };
 
 #include "elasticity/normal_rotation_function_base.h"
@@ -201,7 +222,10 @@ _init_boundary_conditions(const std::vector<unsigned int>& slip,
     
     for (unsigned int i=0; i<slip.size(); i++) {
         
-        Velocity *vel = new Velocity;
+        Real
+        v_freq   = (*_input)(_prefix+"v_freq", "velocity of surface oscillation", 0.),
+        v_amp    = (*_input)(_prefix+"v_amp", "amplitude of surface velocity ", 0.);
+        Velocity *vel = new Velocity(v_freq, v_amp);
         NRot     *rot = new NRot;
         MAST::BoundaryConditionBase* bc = new MAST::BoundaryConditionBase(MAST::SLIP_WALL);
         bc->add(*vel);
@@ -348,6 +372,7 @@ MAST::Examples::FluidExampleBase::transient_solve() {
     n_iters_change_dt = (*_input)(_prefix+"n_iters_change_dt", "number of time-steps before dt is changed", 4),
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
+    _sys->time        = 0.;
     libMesh::out << "q_dyn = " << _flight_cond->q0() << std::endl;
     
     // ask the solver to update the initial condition for d2(X)/dt2
@@ -393,7 +418,7 @@ MAST::Examples::FluidExampleBase::transient_solve() {
                                             _sys->time);
             std::ostringstream oss;
             oss << output_name << "_sol_t_" << t_step;
-            _sys->write_out_vector(*_sys->solution, "data", oss.str(), true);
+            _sys->write_out_vector(/*solver.dt, _sys->time,*/ *_sys->solution, "data", oss.str(), false);
         }
         
         // calculate the output quantity
@@ -448,7 +473,10 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
     
     // initialize the solution to zero, or to something that the
     // user may have provided
-    //this->initialize_sensitivity_solution();
+    this->initialize_solution();
+    _sys->solution->swap(solver.solution_sensitivity());
+    this->initialize_sensitivity_solution();
+    _sys->solution->swap(solver.solution_sensitivity());
     
     // file to write the solution for visualization
     libMesh::ExodusII_IO exodus_writer(*_mesh);
@@ -461,7 +489,7 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
     t_step            = 0,
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
-    
+    _sys->time        = 0.;
     
     // ask the solver to update the initial condition for d2(X)/dt2
     // This is recommended only for the initial time step, since the time
@@ -491,8 +519,10 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
         
         std::ostringstream oss;
         oss << output_name << "_sol_t_" << t_step;
-        _sys->read_in_vector(*_sys->solution, "data", oss.str(), true);
-        
+        _sys->read_in_vector(*_sys->solution, "data", oss.str(), false);
+        oss << "_sens_t";
+        _sys->write_out_vector(/*solver.dt, _sys->time,*/ solver.solution_sensitivity(), "data", oss.str(), false);
+
         // solve for the sensitivity time-step
         solver.sensitivity_solve(assembly, p);
         solver.advance_time_step_with_sensitivity();

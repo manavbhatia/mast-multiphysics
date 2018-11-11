@@ -51,6 +51,7 @@ namespace MAST {
              *   override it to provide a different initialization.
              */
             virtual void initialize_solution();
+            virtual void initialize_sensitivity_solution();
             
             virtual void transient_solve();
             virtual void transient_sensitivity_solve(MAST::Parameter& p);

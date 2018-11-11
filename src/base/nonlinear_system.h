@@ -261,7 +261,9 @@ namespace MAST {
         /*!
          *   writes the specified vector with the specified name in a directory.
          */
-        void write_out_vector(libMesh::NumericVector<Real>& vec,
+        void write_out_vector(//Real dt,
+                              //Real t,
+                              libMesh::NumericVector<Real>& vec,
                               const std::string & directory_name,
                               const std::string & data_name,
                               const bool write_binary_vectors);
@@ -275,6 +277,13 @@ namespace MAST {
                             const std::string & data_name,
                             const bool read_binary_vectors);
 
+        /*!
+         *   reads in the time value and time step for the ith iterate
+         */
+        void get_time_for_time_iterate(unsigned int i,
+                                       Real& dt,
+                                       Real& t);
+        
     protected:
         
         

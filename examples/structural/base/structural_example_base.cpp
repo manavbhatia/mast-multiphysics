@@ -922,7 +922,8 @@ MAST::Examples::StructuralExampleBase::transient_solve() {
     t_step            = 0,
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
-    
+    _sys->time        = 0.;
+
     
     // ask the solver to update the initial condition for d2(X)/dt2
     // This is recommended only for the initial time step, since the time
@@ -1011,7 +1012,7 @@ MAST::Examples::StructuralExampleBase::transient_sensitivity_solve(MAST::Paramet
     t_step            = 0,
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
-
+    _sys->time        = 0.;
     
     // ask the solver to update the initial condition for d2(X)/dt2
     // This is recommended only for the initial time step, since the time

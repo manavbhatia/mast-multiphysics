@@ -87,6 +87,23 @@ namespace MAST {
         }
         
         /*!
+         *    update the transient sensitivity velocity based on the
+         *    current sensitivity solution
+         */
+        virtual void update_sensitivity_velocity(libMesh::NumericVector<Real>& vel,
+                                                 const libMesh::NumericVector<Real>& sol);
+        
+        /*!
+         *    update the transient sensitivity acceleration based on the
+         *    current sensitivity solution
+         */
+        virtual void update_sensitivity_acceleration(libMesh::NumericVector<Real>& acc,
+                                                     const libMesh::NumericVector<Real>& sol) {
+            // should not get here for first order ode
+            libmesh_error();
+        }
+
+        /*!
          *    update the perturbation in transient velocity based on the
          *    current perturbed solution
          */
@@ -117,8 +134,9 @@ namespace MAST {
          *    calculations
          */
         virtual void
-        set_element_sensitivity_data(const std::vector<libMesh::dof_id_type>& dof_indices,
-                                     const std::vector<libMesh::NumericVector<Real>*>& sols);
+        extract_element_sensitivity_data(const std::vector<libMesh::dof_id_type>& dof_indices,
+                                         const std::vector<libMesh::NumericVector<Real>*>& sols,
+                                         std::vector<RealVectorX>& local_sols);
 
         /*!
          *    provides the element with the transient data for calculations
@@ -159,6 +177,14 @@ namespace MAST {
                                       RealVectorX& vec);
 
         /*!
+         *   computes the contribution for this element from previous
+         *   time step
+         */
+        virtual void
+        elem_sensitivity_contribution_previous_timestep(const std::vector<RealVectorX>& prev_sols,
+                                                        RealVectorX& vec);
+
+        /*!
          *   performs the element shape sensitivity calculations over \par elem,
          *   and returns the element residual sensitivity in \par vec .
          */
@@ -187,6 +213,8 @@ namespace MAST {
 
     protected:
         
+        
+        RealVectorX _prev_sol, _prev_vel;
     };
     
 }
