@@ -87,18 +87,37 @@ MAST::Examples::FluidExampleBase::init(MAST::Examples::GetPotWrapper& input,
 
 void
 MAST::Examples::FluidExampleBase::initialize_solution() {
-    
-    unsigned int
-    n = _mesh->mesh_dimension();
-    RealVectorX s = RealVectorX::Zero(n+2);
-    s(0) = _flight_cond->rho();
-    s(1) = _flight_cond->rho_u1();
-    s(2) = _flight_cond->rho_u2();
-    if (n > 2)
-        s(3) = _flight_cond->rho_u3();
-    s(n+1) = _flight_cond->rho_e();
-    
-    _sys_init->initialize_solution(s);
+
+    bool
+    restart = (*_input)(_prefix+"restart_simulation", "restart simulation from solution", false);
+
+    if (!restart) {
+        
+        unsigned int
+        n = _mesh->mesh_dimension();
+        RealVectorX s = RealVectorX::Zero(n+2);
+        s(0) = _flight_cond->rho();
+        s(1) = _flight_cond->rho_u1();
+        s(2) = _flight_cond->rho_u2();
+        if (n > 2)
+            s(3) = _flight_cond->rho_u3();
+        s(n+1) = _flight_cond->rho_e();
+        
+        _sys_init->initialize_solution(s);
+    }
+    else {
+        
+        std::string
+        output_name = (*_input)(_prefix+"output_file_root", "prefix of output file names", "output"),
+        dir_name    = (*_input)(_prefix+"output_file_dir", "directory in which solution vector is stored", "data");
+        unsigned int
+        t_step      = (*_input)(_prefix+"restart_time_step", "time-step to restart solution", 0);
+        
+        
+        std::ostringstream oss;
+        oss << output_name << "_sol_t_" << t_step;
+        _sys->read_in_vector(*_sys->solution, dir_name, oss.str(), true);
+    }
 }
 
 
@@ -363,7 +382,6 @@ MAST::Examples::FluidExampleBase::transient_solve() {
     vel_0    = 0.,
     vel_1    = 1.e12,
     p        = 0.5,
-    tval     = 0.,
     max_dt   = (*_input)(_prefix+"max_dt", "maximum time-step size", 1.e-1);
     
     unsigned int
@@ -372,7 +390,7 @@ MAST::Examples::FluidExampleBase::transient_solve() {
     n_iters_change_dt = (*_input)(_prefix+"n_iters_change_dt", "number of time-steps before dt is changed", 4),
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
-    _sys->time        = 0.;
+    _sys->time        = (*_input)(_prefix+"t_initial", "initial time-step",    0.);
     libMesh::out << "q_dyn = " << _flight_cond->q0() << std::endl;
     
     // ask the solver to update the initial condition for d2(X)/dt2
@@ -404,7 +422,7 @@ MAST::Examples::FluidExampleBase::transient_solve() {
 
         libMesh::out
         << "Time step: "    << t_step
-        << " :  t = "       << tval
+        << " :  t = "       << _sys->time
         << " :  dt = "      << solver.dt
         << " :  xdot-L2 = " << solver.velocity().l2_norm()
         << std::endl;
@@ -418,22 +436,21 @@ MAST::Examples::FluidExampleBase::transient_solve() {
                                             _sys->time);
             std::ostringstream oss;
             oss << output_name << "_sol_t_" << t_step;
-            _sys->write_out_vector(/*solver.dt, _sys->time,*/ *_sys->solution, "data", oss.str(), false);
+            _sys->write_out_vector(/*solver.dt, _sys->time,*/ *_sys->solution, "data", oss.str(), true);
         }
         
         // calculate the output quantity
         force.zero_for_analysis();
         assembly.calculate_output(solver.solution(), force);
         force_output
-                << std::setw(10) << tval
+                << std::setw(10) << _sys->time
                 << std::setw(30) << force.output_total() << std::endl;
 
         // solve for the time-step
         solver.solve(assembly);
         solver.advance_time_step();
         
-        // update time value
-        tval  += solver.dt;
+        // update time step counter
         t_step++;
     }
 
@@ -481,16 +498,12 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
     // file to write the solution for visualization
     libMesh::ExodusII_IO exodus_writer(*_mesh);
     
-    // time solver parameters
-    Real
-    tval     = 0.;
-    
     unsigned int
     t_step            = 0,
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
-    _sys->time        = 0.;
-    
+    _sys->time        = (*_input)(_prefix+"t_initial", "initial time-step",    0.);
+
     // ask the solver to update the initial condition for d2(X)/dt2
     // This is recommended only for the initial time step, since the time
     // integration scheme updates the velocity and acceleration at
@@ -502,7 +515,7 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
         
         libMesh::out
         << "Time step: " << t_step
-        << " :  t = " << tval
+        << " :  t = " << _sys->time
         << " :  xdot-L2 = " << solver.velocity().l2_norm()
         << std::endl;
         
@@ -519,16 +532,15 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
         
         std::ostringstream oss;
         oss << output_name << "_sol_t_" << t_step;
-        _sys->read_in_vector(*_sys->solution, "data", oss.str(), false);
+        _sys->read_in_vector(*_sys->solution, "data", oss.str(), true);
         oss << "_sens_t";
-        _sys->write_out_vector(/*solver.dt, _sys->time,*/ solver.solution_sensitivity(), "data", oss.str(), false);
+        _sys->write_out_vector(/*solver.dt, _sys->time,*/ solver.solution_sensitivity(), "data", oss.str(), true);
 
         // solve for the sensitivity time-step
         solver.sensitivity_solve(assembly, p);
         solver.advance_time_step_with_sensitivity();
         
-        // update time value
-        tval  += solver.dt;
+        // update time step counter
         t_step++;
     }
     
