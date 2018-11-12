@@ -124,17 +124,28 @@ MAST::Examples::FluidExampleBase::initialize_solution() {
 void
 MAST::Examples::FluidExampleBase::initialize_sensitivity_solution() {
     
-    unsigned int
-    n = _mesh->mesh_dimension();
-    RealVectorX s = RealVectorX::Zero(n+2);
-    s(0) = 0.;
-    s(1) = _flight_cond->rho_u1_sens_mach();
-    s(2) = _flight_cond->rho_u2_sens_mach();
-    //if (n > 2)
-    //    s(3) = _flight_cond->rho_u3_sens_mach();
-    s(n+1) = _flight_cond->rho_e_sens_mach();
+    bool
+    restart = (*_input)(_prefix+"restart_simulation", "restart simulation from solution", false);
     
-    _sys_init->initialize_solution(s);
+    if (!restart) {
+        
+        unsigned int
+        n = _mesh->mesh_dimension();
+        RealVectorX s = RealVectorX::Zero(n+2);
+        s(0) = 0.;
+        s(1) = _flight_cond->rho_u1_sens_mach();
+        s(2) = _flight_cond->rho_u2_sens_mach();
+        //if (n > 2)
+        //    s(3) = _flight_cond->rho_u3_sens_mach();
+        s(n+1) = _flight_cond->rho_e_sens_mach();
+        
+        _sys_init->initialize_solution(s);
+    }
+    else {
+        
+        _sys->solution->zero();
+        _sys->solution->close();
+    }
 }
 
 
@@ -482,9 +493,17 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
     MAST::TransientAssembly                                  assembly;
     MAST::ConservativeFluidTransientAssemblyElemOperations   elem_ops;
     MAST::FirstOrderNewmarkTransientSolver                   solver;
-    
+    RealVectorX
+    nvec = RealVectorX::Zero(3);
+    nvec(1) = 1.;
+    MAST::IntegratedForceOutput                              force(nvec);
+    std::set<libMesh::boundary_id_type> bids;
+    bids.insert(3);
+    force.set_participating_boundaries(bids);
+
     assembly.set_discipline_and_system(*_discipline, *_sys_init);
     elem_ops.set_discipline_and_system(*_discipline, *_sys_init);
+    force.set_discipline_and_system(*_discipline, *_sys_init);
     solver.set_discipline_and_system(*_discipline, *_sys_init);
     solver.set_elem_operation_object(elem_ops);
     
@@ -497,7 +516,16 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
     
     // file to write the solution for visualization
     libMesh::ExodusII_IO exodus_writer(*_mesh);
-    
+
+    // file to write the solution for visualization
+    libMesh::ExodusII_IO transient_output(*_mesh);
+    std::ofstream force_output;
+    force_output.open("force.txt");
+    force_output
+    << std::setw(10) << "t"
+    << std::setw(30) << "force"
+    << std::setw(30) << "force_sens" << std::endl;
+
     unsigned int
     t_step            = 0,
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
@@ -537,6 +565,14 @@ MAST::Examples::FluidExampleBase::transient_sensitivity_solve(MAST::Parameter& p
         _sys->write_out_vector(/*solver.dt, _sys->time,*/ solver.solution_sensitivity(), "data", oss.str(), true);
 
         // solve for the sensitivity time-step
+        force.zero_for_analysis();
+        assembly.calculate_output(solver.solution(), force);
+        assembly.calculate_output_direct_sensitivity(solver.solution(), solver.solution_sensitivity(), p, force);
+        force_output
+        << std::setw(10) << _sys->time
+        << std::setw(30) << force.output_total()
+        << std::setw(30) << force.output_sensitivity_total(p) << std::endl;
+
         solver.sensitivity_solve(assembly, p);
         solver.advance_time_step_with_sensitivity();
         

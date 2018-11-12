@@ -977,7 +977,7 @@ side_integrated_force_sensitivity(const MAST::FunctionBase& p,
                            if_viscous());
         
         // now initialize the linearized solution
-        Bmat.right_multiply(vec1_n1, _delta_sol);
+        Bmat.right_multiply(vec1_n1, _sol_sens);
         linearized_primitive_sol.zero();
         linearized_primitive_sol.init(primitive_sol, vec1_n1);
         

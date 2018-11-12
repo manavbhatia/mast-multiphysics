@@ -93,9 +93,7 @@ namespace MAST {
          *    respect to parameter \f$ p \f$. This returns the quantity
          *   accumulated over all elements.
          */
-        virtual Real output_sensitivity_total(const MAST::FunctionBase& p) {
-            libmesh_error(); // not yet implemented
-        }
+        virtual Real output_sensitivity_total(const MAST::FunctionBase& p);
         
         
         /*!
