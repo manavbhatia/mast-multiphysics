@@ -81,11 +81,15 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
     &rhs   = sys.add_sensitivity_rhs();
     
     std::unique_ptr<libMesh::NumericVector<Real>>
-    f_int(rhs.zero_clone().release());
+    f_int(rhs.zero_clone().release()),
+    vec1(rhs.zero_clone().release());
     
     J_int.zero();
     M_avg.zero();
     rhs.zero();
+    J_int.close();
+    M_avg.close();
+    rhs.close();
     
     _index0     = _index1;
     
@@ -123,10 +127,10 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         // assemble the forcing vector
         assembly.sensitivity_assemble(f, rhs);
         rhs.scale(-1.);
-        f_int->add(this->dt, sol1);  // int_0^t F dt
+        f_int->add(this->dt, rhs);  // int_0^t F dt
         f_int->close();
         rhs.zero();
-        M_avg.vector_mult(sol0, rhs); // M_avg x0
+        M_avg.vector_mult(rhs, sol0); // M_avg x0
         rhs.add(1., *f_int);          // M_avg x0 + int_0^t F dt
         rhs.close();
         
@@ -165,9 +169,11 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
 #ifdef LIBMESH_ENABLE_CONSTRAINTS
         sys.get_dof_map().enforce_constraints_exactly (sys, &sol1, /* homogeneous = */ true);
 #endif
-        
+
+        M_avg.vector_mult(*vec1, sol1);
+
         // estimate the amplification factor
-        amp = _compute_amplification_factor(rhs, sol1);
+        amp = _compute_amplification_factor(rhs, *vec1);
         
         if (amp <= this->max_amp ||  _index1 >= max_index) {
             
@@ -179,12 +185,15 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
             if (amp <= this->max_amp) {
                 
                 // nothing to be done since sol1 is already the current solution
+                libMesh::out << "accepting sol" << std::endl;
             }
             else {
                 // present sol is same as previous sol
                 sol1.zero();
                 sol1.add(1., sol0);
                 sol1.zero();
+                
+                libMesh::out << "reached final step. Rjecting solution" << std::endl;
             }
         }
         else {
@@ -317,6 +326,25 @@ extract_element_sensitivity_data(const std::vector<libMesh::dof_id_type>& dof_in
 }
 
 
+void
+MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
+update_velocity(libMesh::NumericVector<Real>&       vec,
+                const libMesh::NumericVector<Real>& sol) {
+    
+    const libMesh::NumericVector<Real>
+    &prev_sol = this->solution(1),
+    &prev_vel = this->velocity(1);
+    
+    vec.zero();
+    vec.add( 1.,      sol);
+    vec.add(-1., prev_sol);
+    vec.scale(1./beta/dt);
+    vec.close();
+    vec.add(-(1.-beta)/beta, prev_vel);
+    
+    vec.close();
+}
+
 
 void
 MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
@@ -436,5 +464,6 @@ _compute_amplification_factor(const libMesh::NumericVector<Real>& sol0,
             var_norm(i) = norm1/norm0;
     }
     
+    libMesh::out << "amp coeffs: " << var_norm.transpose() << std::endl;
     return var_norm.maxCoeff();
 }

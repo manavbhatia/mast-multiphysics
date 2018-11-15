@@ -126,13 +126,10 @@ MAST::NonlinearSystem::init_data () {
     matrix_A->init();
     matrix_A->zero();
     
-    if (_is_generalized_eigenproblem || _initialize_B_matrix) {
-        
-        matrix_B = libMesh::SparseMatrix<Real>::build(this->comm()).release();
-        dof_map.attach_matrix(*matrix_B);
-        matrix_B->init();
-        matrix_B->zero();
-    }
+    matrix_B = libMesh::SparseMatrix<Real>::build(this->comm()).release();
+    dof_map.attach_matrix(*matrix_B);
+    matrix_B->init();
+    matrix_B->zero();
     
     eigen_solver.reset(new MAST::SlepcEigenSolver(this->comm()));
     if (libMesh::on_command_line("--solver_system_names")) {

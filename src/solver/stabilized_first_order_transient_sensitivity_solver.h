@@ -92,9 +92,7 @@ namespace MAST {
         
         virtual void
         update_velocity(libMesh::NumericVector<Real>& vel,
-                                     const libMesh::NumericVector<Real>& sol){
-            libmesh_error();
-        }
+                        const libMesh::NumericVector<Real>& sol);
         
         virtual void
         update_acceleration(libMesh::NumericVector<Real>& acc,
