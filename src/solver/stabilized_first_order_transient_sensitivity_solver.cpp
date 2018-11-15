@@ -76,9 +76,10 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
     &M_avg = *sys.matrix_B;
     
     libMesh::NumericVector<Real>
-    &sol0  = this->solution_sensitivity(1),    // previous solution
-    &sol1  = this->solution_sensitivity(),     // current solution
-    &rhs   = sys.add_sensitivity_rhs();
+    &sol    = this->solution(),
+    &dsol0  = this->solution_sensitivity(1),    // previous solution
+    &dsol1  = this->solution_sensitivity(),     // current solution
+    &rhs    = sys.add_sensitivity_rhs();
     
     std::unique_ptr<libMesh::NumericVector<Real>>
     f_int(rhs.zero_clone().release()),
@@ -109,16 +110,16 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         // update the solution vector
         std::ostringstream oss;
         oss << "output_sol_t_" << _index1;
-        sys.read_in_vector(*sys.solution, "data_M0p25_forced", oss.str(), true);
+        sys.read_in_vector(sol, "data_M0p25_forced", oss.str(), true);
 
         // assemble the Jacobian matrix
         _assemble_mass = false;
-        assembly.residual_and_jacobian(*sys.solution, nullptr, sys.matrix, sys);
+        assembly.residual_and_jacobian(sol, nullptr, sys.matrix, sys);
         J_int.add(this->dt, *sys.matrix);
         
         // assemble the mass matrix
         _assemble_mass = true;
-        assembly.residual_and_jacobian(*sys.solution, nullptr, sys.matrix, sys);
+        assembly.residual_and_jacobian(sol, nullptr, sys.matrix, sys);
         Mat M_avg_mat = dynamic_cast<libMesh::PetscMatrix<Real>&>(M_avg).mat();
         PetscErrorCode ierr = MatScale(M_avg_mat, (sys.time - _t0 - this->dt)/(sys.time - _t0));
         CHKERRABORT(sys.comm().get(), ierr);
@@ -130,7 +131,7 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         f_int->add(this->dt, rhs);  // int_0^t F dt
         f_int->close();
         rhs.zero();
-        M_avg.vector_mult(rhs, sol0); // M_avg x0
+        M_avg.vector_mult(rhs, dsol0); // M_avg x0
         rhs.add(1., *f_int);          // M_avg x0 + int_0^t F dt
         rhs.close();
         
@@ -160,17 +161,17 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         
         std::pair<unsigned int, Real> rval =
         sys.linear_solver->solve (*sys.matrix, pc,
-                                  sol1,
+                                  dsol1,
                                   rhs,
                                   solver_params.second,
                                   solver_params.first);
         
         // The linear solver may not have fit our constraints exactly
 #ifdef LIBMESH_ENABLE_CONSTRAINTS
-        sys.get_dof_map().enforce_constraints_exactly (sys, &sol1, /* homogeneous = */ true);
+        sys.get_dof_map().enforce_constraints_exactly (sys, &dsol1, /* homogeneous = */ true);
 #endif
 
-        M_avg.vector_mult(*vec1, sol1);
+        M_avg.vector_mult(*vec1, dsol1);
 
         // estimate the amplification factor
         amp = _compute_amplification_factor(rhs, *vec1);
@@ -184,14 +185,16 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
             // case, we should throw that solution out.
             if (amp <= this->max_amp) {
                 
-                // nothing to be done since sol1 is already the current solution
                 libMesh::out << "accepting sol" << std::endl;
+                dsol0.zero();
+                dsol0.add(1., dsol1);
+                dsol0.close();
             }
             else {
                 // present sol is same as previous sol
-                sol1.zero();
-                sol1.add(1., sol0);
-                sol1.zero();
+                dsol1.zero();
+                dsol1.add(1., dsol0);
+                dsol1.zero();
                 
                 libMesh::out << "reached final step. Rjecting solution" << std::endl;
             }
@@ -223,6 +226,7 @@ evaluate_q_sens_for_previous_interval(MAST::AssemblyBase& assembly,
     q           = 0.;
     
     libMesh::NumericVector<Real>
+    &sol         = this->solution(),
     &dx0         = this->solution_sensitivity(1),
     &dx1         = this->solution_sensitivity();
     
@@ -236,7 +240,7 @@ evaluate_q_sens_for_previous_interval(MAST::AssemblyBase& assembly,
         // update the nonlinear solution
         std::ostringstream oss;
         oss << "output_sol_t_" << _index1;
-        sys.read_in_vector(*sys.solution, "data_M0p25_forced", oss.str(), true);
+        sys.read_in_vector(sol, "data_M0p25_forced", oss.str(), true);
         
         sys.time  = _t0 + this->dt * ( i - _index0);
         
@@ -248,7 +252,7 @@ evaluate_q_sens_for_previous_interval(MAST::AssemblyBase& assembly,
         dx->close();
         
         output.zero_for_analysis();
-        assembly.calculate_output_direct_sensitivity(*sys.solution, *dx, p, output);
+        assembly.calculate_output_direct_sensitivity(sol, *dx, p, output);
         
         q  += output.output_sensitivity_total(p) * this->dt;
     }

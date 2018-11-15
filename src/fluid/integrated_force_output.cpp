@@ -33,8 +33,9 @@
 
 MAST::IntegratedForceOutput::IntegratedForceOutput(const RealVectorX& nvec):
 MAST::OutputAssemblyElemOperations(),
-_n_vec   (nvec),
-_force   (0.) {
+_n_vec      (nvec),
+_force      (0.),
+_force_sens (0.) {
     
     _n_vec /= _n_vec.norm();
 }
@@ -67,7 +68,8 @@ MAST::IntegratedForceOutput::init(const libMesh::Elem& elem) {
 void
 MAST::IntegratedForceOutput::zero_for_analysis()  {
     
-    _force = 0.;
+    _force      = 0.;
+    _force_sens = 0.;
 }
 
 
@@ -75,6 +77,7 @@ void
 MAST::IntegratedForceOutput::zero_for_sensitivity() {
     
     // nothing to be done here
+    _force_sens = 0.;
 }
 
 

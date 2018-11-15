@@ -642,7 +642,7 @@ MAST::Examples::FluidExampleBase::transient_stabilized_sensitivity_solve(MAST::P
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
     _sys->time        = (*_input)(_prefix+"t_initial", "initial time-step",    0.);
-    solver.max_amp    = 1.e10;
+    solver.max_amp    = 1.e0;
     solver.max_index  = n_steps;
     
     // ask the solver to update the initial condition for d2(X)/dt2
@@ -685,7 +685,6 @@ MAST::Examples::FluidExampleBase::transient_stabilized_sensitivity_solve(MAST::P
         << std::setw(30) << force.output_sensitivity_total(p) << std::endl;
         
         solver.sensitivity_solve(assembly, p);
-        solver.advance_time_step_with_sensitivity();
         
         // update time step counter
         t_step++;
