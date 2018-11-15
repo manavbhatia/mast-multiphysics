@@ -55,7 +55,8 @@ namespace MAST {
             
             virtual void transient_solve();
             virtual void transient_sensitivity_solve(MAST::Parameter& p);
-            
+            virtual void transient_stabilized_sensitivity_solve(MAST::Parameter& p);
+
         protected:
             
             virtual void _init_system_and_discipline();

@@ -37,10 +37,10 @@
 
 
 MAST::ComplexSolverBase::ComplexSolverBase():
-_assembly  (nullptr),
 tol        (1.0e-3),
-max_iters  (20) {
-    
+max_iters  (20),
+_assembly  (nullptr) {
+
 }
 
 

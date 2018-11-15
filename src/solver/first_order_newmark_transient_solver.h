@@ -213,8 +213,6 @@ namespace MAST {
 
     protected:
         
-        
-        RealVectorX _prev_sol, _prev_vel;
     };
     
 }
