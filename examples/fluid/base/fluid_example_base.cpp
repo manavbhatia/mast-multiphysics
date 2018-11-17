@@ -637,7 +637,8 @@ MAST::Examples::FluidExampleBase::transient_stabilized_sensitivity_solve(MAST::P
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
     _sys->time        = (*_input)(_prefix+"t_initial", "initial time-step",    0.);
-    solver.max_amp    = (*_input)(_prefix+"max_amp", "maximum amplitude for the stabilization solver",   1.);
+    solver.max_amp    = (*_input)(_prefix+"max_amp", "maximum amplitude for the stabilized sensitivity solver",   1.);
+    solver.beta       = (*_input)(_prefix+"sensitivity_beta", "beta for stabilized sensitivity solver",   1.);
     solver.max_index  = n_steps;
     solver.set_nolinear_solution_location(nonlinear_sol_root, nonlinear_sol_dir);
     
