@@ -53,6 +53,11 @@ namespace MAST {
         unsigned int max_index;
         
         /*!
+         *   sets if the eigenvalue-based stabilization will be used.
+         */
+        void set_eigenvalue_stabilization(bool f);
+        
+        /*!
          *    solvers the current time step for sensitivity wrt \p f
          */
         virtual void sensitivity_solve(MAST::AssemblyBase& assembly,
@@ -150,10 +155,14 @@ namespace MAST {
         }
     protected:
 
-        Real _compute_amplification_factor(const libMesh::NumericVector<Real>& sol0,
-                                           const libMesh::NumericVector<Real>& sol1);
+        Real _compute_norm_amplification_factor(const libMesh::NumericVector<Real>& sol0,
+                                                const libMesh::NumericVector<Real>& sol1);
         
-        
+        Real _compute_eig_amplification_factor(libMesh::SparseMatrix<Real>& A,
+                                               libMesh::SparseMatrix<Real>& B);
+
+
+        bool         _use_eigenvalue_stabilization;
         bool         _assemble_mass;
         Real         _t0;
         unsigned int _index0, _index1;

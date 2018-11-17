@@ -20,6 +20,7 @@
 
 // MAST includes
 #include "solver/stabilized_first_order_transient_sensitivity_solver.h"
+#include "solver/slepc_eigen_solver.h"
 #include "base/transient_assembly_elem_operations.h"
 #include "base/elem_base.h"
 #include "base/nonlinear_system.h"
@@ -33,18 +34,20 @@
 #include "libmesh/linear_solver.h"
 #include "libmesh/petsc_matrix.h"
 #include "libmesh/enum_norm_type.h"
+#include "libmesh/dof_map.h"
 
 
 MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
 StabilizedFirstOrderNewmarkTransientSensitivitySolver():
 MAST::TransientSolverBase(1, 2),
-max_amp         (1.),
-beta            (1.),
-max_index       (0),
-_assemble_mass  (false),
-_t0             (0.),
-_index0         (0),
-_index1         (0) {
+max_amp                       (1.),
+beta                          (1.),
+max_index                     (0),
+_use_eigenvalue_stabilization (true),
+_assemble_mass                (false),
+_t0                           (0.),
+_index0                       (0),
+_index1                       (0) {
     
 }
 
@@ -52,6 +55,14 @@ _index1         (0) {
 MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
 ~StabilizedFirstOrderNewmarkTransientSensitivitySolver() {
     
+}
+
+
+void
+MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
+set_eigenvalue_stabilization(bool f) {
+    
+    _use_eigenvalue_stabilization = f;
 }
 
 
@@ -72,8 +83,19 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
     assembly.set_elem_operation_object(*this);
     
     libMesh::SparseMatrix<Real>
+    &M1    = *sys.matrix,
     &J_int = *sys.matrix_A,
     &M_avg = *sys.matrix_B;
+    
+    // build the system matrix
+    std::unique_ptr<libMesh::SparseMatrix<Real>>
+    M0(libMesh::SparseMatrix<Real>::build(sys.comm()).release());
+    sys.get_dof_map().attach_matrix(*M0);
+    M0->init();
+    M0->zero();
+    M0->close();
+
+    
     
     libMesh::NumericVector<Real>
     &sol    = this->solution(),
@@ -110,20 +132,24 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         // update the solution vector
         std::ostringstream oss;
         oss << "output_sol_t_" << _index1;
-        sys.read_in_vector(sol, "data_M0p25_forced", oss.str(), true);
+        sys.read_in_vector(sol, "data_M0p250", oss.str(), true);
 
         // assemble the Jacobian matrix
         _assemble_mass = false;
-        assembly.residual_and_jacobian(sol, nullptr, sys.matrix, sys);
-        J_int.add(this->dt, *sys.matrix);
+        assembly.residual_and_jacobian(sol, nullptr, &M1, sys);
+        J_int.add(this->dt, M1);
         
         // assemble the mass matrix
         _assemble_mass = true;
-        assembly.residual_and_jacobian(sol, nullptr, sys.matrix, sys);
+        assembly.residual_and_jacobian(sol, nullptr, &M1, sys);
         Mat M_avg_mat = dynamic_cast<libMesh::PetscMatrix<Real>&>(M_avg).mat();
         PetscErrorCode ierr = MatScale(M_avg_mat, (sys.time - _t0 - this->dt)/(sys.time - _t0));
         CHKERRABORT(sys.comm().get(), ierr);
-        M_avg.add(this->dt/(sys.time - _t0), *sys.matrix);
+        M_avg.add(this->dt/(sys.time - _t0), M1);
+        
+        // close the quantities
+        J_int.close();
+        M_avg.close();
         
         // assemble the forcing vector
         assembly.sensitivity_assemble(f, rhs);
@@ -135,20 +161,22 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         rhs.add(1., *f_int);          // M_avg x0 + int_0^t F dt
         rhs.close();
         
-        // close the quantities
-        J_int.close();
-        M_avg.close();
-        
         // now compute the matrix for the linear solution
         // Note that the stabilized solver for system definde as
         // M x_dot = f(x) will define the Jacobian as  (M_avg - Jint).
         // However, since MAST defines the system as  M x_dot - f(x) = 0
         // and returns the Jacobian as J = -df(x)/dx, we will not multiply
         // the Jacobian with -1.
-        sys.matrix->zero();
-        sys.matrix->add(1., M_avg);
-        sys.matrix->add(1., J_int); // see explanation above for positive sign.
-        sys.matrix->close();
+        M1.zero();
+        M1.add(1., M_avg);
+        M1.add(this->beta, J_int); // see explanation above for positive sign.
+        M1.close();
+
+        M0->zero();
+        M0->add(1., M_avg);
+        M0->add(-(1.-this->beta), J_int); // see explanation above for negative sign.
+        M0->close();
+
         
         // The sensitivity problem is linear
         // Our iteration counts and residuals will be sums of the individual
@@ -160,7 +188,7 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         libMesh::SparseMatrix<Real> * pc = sys.request_matrix("Preconditioner");
         
         std::pair<unsigned int, Real> rval =
-        sys.linear_solver->solve (*sys.matrix, pc,
+        sys.linear_solver->solve (M1, pc,
                                   dsol1,
                                   rhs,
                                   solver_params.second,
@@ -173,8 +201,12 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
 
         M_avg.vector_mult(*vec1, dsol1);
 
-        // estimate the amplification factor
-        amp = _compute_amplification_factor(rhs, *vec1);
+        // estimate the amplification factor. The norm based method only
+        // works for beta = 1 (backward Euler).
+        if (!_use_eigenvalue_stabilization && this->beta == 1.)
+            amp = _compute_norm_amplification_factor(rhs, *vec1);
+        else
+            amp = _compute_eig_amplification_factor(*M0, M1);
         
         if (amp <= this->max_amp ||  _index1 >= max_index) {
             
@@ -240,7 +272,7 @@ evaluate_q_sens_for_previous_interval(MAST::AssemblyBase& assembly,
         // update the nonlinear solution
         std::ostringstream oss;
         oss << "output_sol_t_" << _index1;
-        sys.read_in_vector(sol, "data_M0p25_forced", oss.str(), true);
+        sys.read_in_vector(sol, "data_M0p250", oss.str(), true);
         
         sys.time  = _t0 + this->dt * ( i - _index0);
         
@@ -441,8 +473,8 @@ elem_sensitivity_contribution_previous_timestep(const std::vector<RealVectorX>& 
 
 Real
 MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
-_compute_amplification_factor(const libMesh::NumericVector<Real>& sol0,
-                              const libMesh::NumericVector<Real>& sol1) {
+_compute_norm_amplification_factor(const libMesh::NumericVector<Real>& sol0,
+                                   const libMesh::NumericVector<Real>& sol1) {
     
     libmesh_assert(_system);
     
@@ -470,4 +502,48 @@ _compute_amplification_factor(const libMesh::NumericVector<Real>& sol0,
     
     libMesh::out << "amp coeffs: " << var_norm.transpose() << std::endl;
     return var_norm.maxCoeff();
+}
+
+
+Real
+MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
+_compute_eig_amplification_factor(libMesh::SparseMatrix<Real>& A,
+                                  libMesh::SparseMatrix<Real>& B) {
+    
+    libmesh_assert(_system);
+
+    MAST::NonlinearSystem&
+    sys = _system->system();
+
+    std::unique_ptr<MAST::SlepcEigenSolver>
+    eigen_solver(new MAST::SlepcEigenSolver(sys.comm()));
+
+    if (libMesh::on_command_line("--solver_system_names")) {
+        
+        EPS eps =  eigen_solver.get()->eps();
+        std::string nm = sys.name() + "_";
+        EPSSetOptionsPrefix(eps, nm.c_str());
+    }
+    eigen_solver->set_eigenproblem_type(libMesh::GNHEP);
+    eigen_solver->set_position_of_spectrum(libMesh::LARGEST_MAGNITUDE);
+    eigen_solver->init();
+    
+    // solve the eigenvalue problem
+    //  Ax =  lambda Bx
+    std::pair<unsigned int, unsigned int>
+    solve_data = eigen_solver->solve_generalized (A, B,
+                                                  1,
+                                                  20,
+                                                  1.e-6,
+                                                  50);
+
+    // make sure that atleast one eigenvalue was computed
+    libmesh_assert(solve_data.first);
+    
+    std::pair<Real, Real> pair = eigen_solver->get_eigenvalue(0);
+    std::complex<Real>    eig(pair.first, pair.second);
+    Real amp = std::abs(eig);
+    
+    libMesh::out << "amp coeffs: " << amp << std::endl;
+    return amp;
 }
