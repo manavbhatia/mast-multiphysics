@@ -595,7 +595,9 @@ MAST::Examples::FluidExampleBase::transient_stabilized_sensitivity_solve(MAST::P
     output                = (*_input)(_prefix+"if_output", "if write output to a file", false);
     std::string
     output_name           = (*_input)(_prefix+"output_file_root", "prefix of output file names", "output"),
-    transient_output_name = output_name + "_transient_sensitivity_" + p.name() + ".exo";
+    transient_output_name = output_name + "_transient_sensitivity_" + p.name() + ".exo",
+    nonlinear_sol_root    = output_name+std::string("_sol_t_"),
+    nonlinear_sol_dir     = (*_input)(_prefix+"nonlinear_sol_dir", "directory containing the location of nonlinear solutions", "");
     
     // the output from analysis should have been saved for sensitivity
     libmesh_assert(output);
@@ -618,13 +620,6 @@ MAST::Examples::FluidExampleBase::transient_stabilized_sensitivity_solve(MAST::P
     solver.set_discipline_and_system(*_discipline, *_sys_init);
     solver.set_elem_operation_object(elem_ops);
     
-    // initialize the solution to zero, or to something that the
-    // user may have provided
-    this->initialize_solution();
-    _sys->solution->swap(solver.solution_sensitivity());
-    this->initialize_sensitivity_solution();
-    _sys->solution->swap(solver.solution_sensitivity());
-    
     // file to write the solution for visualization
     libMesh::ExodusII_IO exodus_writer(*_mesh);
     
@@ -642,8 +637,9 @@ MAST::Examples::FluidExampleBase::transient_stabilized_sensitivity_solve(MAST::P
     n_steps           = (*_input)(_prefix+"n_transient_steps", "number of transient time-steps", 100);
     solver.dt         = (*_input)(_prefix+"dt", "time-step size",    1.e-3);
     _sys->time        = (*_input)(_prefix+"t_initial", "initial time-step",    0.);
-    solver.max_amp    = 1.e0;
+    solver.max_amp    = (*_input)(_prefix+"max_amp", "maximum amplitude for the stabilization solver",   1.);
     solver.max_index  = n_steps;
+    solver.set_nolinear_solution_location(nonlinear_sol_root, nonlinear_sol_dir);
     
     // ask the solver to update the initial condition for d2(X)/dt2
     // This is recommended only for the initial time step, since the time

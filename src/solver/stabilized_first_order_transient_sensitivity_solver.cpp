@@ -68,13 +68,24 @@ set_eigenvalue_stabilization(bool f) {
 
 void
 MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
+set_nolinear_solution_location(std::string& file_root,
+                               std::string& dir) {
+    
+    _sol_name_root = file_root;
+    _sol_dir       = dir;
+}
+
+
+void
+MAST::StabilizedFirstOrderNewmarkTransientSensitivitySolver::
 sensitivity_solve(MAST::AssemblyBase& assembly,
                   const MAST::FunctionBase& f) {
     
     libmesh_assert_greater(  max_amp, 0.);
     libmesh_assert_greater(max_index,  0);
-    
-    
+    libmesh_assert(_sol_name_root.size());
+    libmesh_assert(_sol_dir.size());
+
     // Log how long the linear solve takes.
     LOG_SCOPE("sensitivity_solve()", "StabilizedSensitivity");
     
@@ -131,8 +142,8 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         
         // update the solution vector
         std::ostringstream oss;
-        oss << "output_sol_t_" << _index1;
-        sys.read_in_vector(sol, "data_M0p250", oss.str(), true);
+        oss << _sol_name_root << _index1;
+        sys.read_in_vector(sol, _sol_dir, oss.str(), true);
 
         // assemble the Jacobian matrix
         _assemble_mass = false;
@@ -271,8 +282,8 @@ evaluate_q_sens_for_previous_interval(MAST::AssemblyBase& assembly,
         
         // update the nonlinear solution
         std::ostringstream oss;
-        oss << "output_sol_t_" << _index1;
-        sys.read_in_vector(sol, "data_M0p250", oss.str(), true);
+        oss << _sol_name_root << _index1;
+        sys.read_in_vector(sol, _sol_dir, oss.str(), true);
         
         sys.time  = _t0 + this->dt * ( i - _index0);
         

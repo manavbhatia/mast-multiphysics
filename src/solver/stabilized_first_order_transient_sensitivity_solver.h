@@ -58,6 +58,14 @@ namespace MAST {
         void set_eigenvalue_stabilization(bool f);
         
         /*!
+         *   sets the directory where the nonlinear solutions are stored. The
+         *   name of the solution is assumed to be file_root + std::string(index)
+         */
+        void set_nolinear_solution_location(std::string& file_root,
+                                            std::string& dir);
+        
+        
+        /*!
          *    solvers the current time step for sensitivity wrt \p f
          */
         virtual void sensitivity_solve(MAST::AssemblyBase& assembly,
@@ -167,6 +175,8 @@ namespace MAST {
         Real         _t0;
         unsigned int _index0, _index1;
         
+        // nonlinear solutions are stored in this directory
+        std::string  _sol_name_root, _sol_dir;
     };
     
 }
