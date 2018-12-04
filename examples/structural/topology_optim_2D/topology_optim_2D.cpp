@@ -319,14 +319,21 @@ MAST::Examples::TopologyOptimizationLevelSet2D::init(MAST::Examples::GetPotWrapp
 
     unsigned int
     max_inner_iters        = (*_input)(_prefix+"max_inner_iters", "maximum inner iterations in GCMMA", 15);
+    _n_rel_change_iters    = (*_input)(_prefix+"n_rel_change_iters", "number of iters to check for convergence of objective", 5);
     
     Real
-    constr_penalty         = (*_input)(_prefix+"constraint_penalty", "constraint penalty in GCMMA", 50.),
+    constr_penalty         = (*_input)(_prefix+"constraint_penalty", "constraint penalty in GCMMA",      50.),
+    initial_step           = (*_input)(_prefix+"initial_rel_step", "relative step length in GCMMA",      0.5),
+    asymp_exp              = (*_input)(_prefix+"asymptote_expansion", "expansion of asymptote in GCMMA", 1.2),
+    asymp_red              = (*_input)(_prefix+"asymptote_reduction", "reduction of asymptote in GCMMA", 0.7),
     length                 = (*_input)(_prefix+"length", "length of domain along x-axis", 0.3),
     height                 = (*_input)(_prefix+"height", "length of domain along y-axis", 0.3);
 
-    _optimization_interface->set_real_parameter   ("constraint_penalty",  constr_penalty);
-    _optimization_interface->set_integer_parameter(   "max_inner_iters", max_inner_iters);
+    _optimization_interface->set_real_parameter   ( "constraint_penalty",   constr_penalty);
+    _optimization_interface->set_real_parameter   ("initial_rel_step",        initial_step);
+    _optimization_interface->set_real_parameter   ("asymptote_expansion",        asymp_exp);
+    _optimization_interface->set_real_parameter   ("asymptote_reduction",        asymp_red);
+    _optimization_interface->set_integer_parameter(   "max_inner_iters",   max_inner_iters);
     
     _obj_scaling           = 100./length/height;
     _stress_lim            = (*_input)(_prefix+"vm_stress_limit", "limit von-mises stress value", 2.e8);
@@ -365,8 +372,8 @@ MAST::Examples::TopologyOptimizationLevelSet2D::init_dvar(std::vector<Real>& x,
     xmin.resize(_n_vars);
     xmax.resize(_n_vars);
     
-    std::fill(xmin.begin(), xmin.end(),   -1.);
-    std::fill(xmax.begin(), xmax.end(),    1.);
+    std::fill(xmin.begin(), xmin.end(),   -1.e-2);
+    std::fill(xmax.begin(), xmax.end(),    1.e-2);
     
     // now, check if the user asked to initialize dvs from a previous file
     std::string

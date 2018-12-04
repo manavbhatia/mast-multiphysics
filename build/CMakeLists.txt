@@ -143,11 +143,11 @@ file (GLOB_RECURSE mast_source_files
 add_library (mast ${mast_source_files})
 
 target_link_libraries (mast  
-		               debug ${mesh_dbg}
+		               #debug ${mesh_dbg}
 		               optimized ${mesh_opt}
 		               ${petsc_lib}
 		               ${slepc_lib}
-		               ${lapack_lib}
+		               #${lapack_lib}
                        ${blas_lib}
 		               ${gcmma_lib}
 		               ${dot_lib}
