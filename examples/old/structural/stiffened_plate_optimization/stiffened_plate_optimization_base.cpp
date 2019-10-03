@@ -18,8 +18,8 @@
  */
 
 // MAST includes
-#include "examples/structural/stiffened_plate_optimization/stiffened_plate_optimization_base.h"
-#include "examples/structural/plate_optimization/plate_optimization_base.h"
+#include "examples/old/structural/stiffened_plate_optimization/stiffened_plate_optimization_base.h"
+#include "examples/old/structural/plate_optimization/plate_optimization_base.h"
 #include "examples/base/multilinear_interpolation.h"
 #include "property_cards/solid_1d_section_element_property_card.h"
 #include "property_cards/solid_2d_section_element_property_card.h"

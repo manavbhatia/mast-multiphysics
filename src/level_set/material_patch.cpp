@@ -46,7 +46,7 @@ MAST::MaterialPatch::init(const libMesh::Elem& elem,
     v = 0.;
     
     phi(node, t, v);
-    libmesh_assert_less_equal(v, 0);
+    libmesh_assert_less_equal(v, 1.e-6);
 
     std::set<const libMesh::Elem*> elems;
     
@@ -246,7 +246,7 @@ MAST::MaterialPatch::_quad4_material_levels(const libMesh::Elem& elem,
     }
 
     // make sure that the number of sign changes is a multiple of 2
-    libmesh_assert_equal_to(n_sign_changes%2, 0);
+    //libmesh_assert_equal_to(n_sign_changes%2, 0);
     
     // number of levels is equal to half the number of sign changes
     n_material_levels = n_sign_changes/2;
