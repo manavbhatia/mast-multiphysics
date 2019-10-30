@@ -52,9 +52,15 @@ namespace MAST {
 
                 if (input_name == "")
                     _input = new GetPot(argc, argv);
-                else
+                else {
                     _input = new GetPot(input_name);
-                
+
+                    std::ifstream f(input);
+
+                    if (f.is_open())
+                        libMesh::out << f.rdbuf();
+
+                }
                 _print = (*_input)("print_params", false);
             }
 
