@@ -980,13 +980,19 @@ public:  // parametric constructor
         _temp       = new MAST::Parameter("temperature", _input("temp", "", 10.));
         temp_f     = new MAST::ConstantFieldFunction("temperature", *_temp);
 
-        // initialize the load
-        _jac_scaling = new MAST::Examples::ThermalJacobianScaling;
+
+            // initialize the load
+            _jac_scaling = new MAST::Examples::ThermalJacobianScaling;
+
 
         _T_load = new MAST::BoundaryConditionBase(MAST::TEMPERATURE);
         _T_load->add(*temp_f);
         _T_load->add(*ref_temp_f);
-        _T_load->add(*_jac_scaling);
+
+        if(!_if_continuation_solver)
+            _T_load->add(*_jac_scaling);
+
+
         _discipline->add_volume_load(0, *_T_load);          // for the panel
         for (unsigned int i = 0; i < _n_stiff; i++)
             _discipline->add_volume_load(i + 1, *_T_load);    // for the stiffeners
@@ -1809,16 +1815,17 @@ public:  // parametric constructor
             _obj._nonlinear_elem_ops->set_discipline_and_system(*_obj._discipline,
                                                                 *_obj._structural_sys);
 
-            //            // apply scaling on thermal jaobian
-            MAST::Examples::ThermalJacobianScaling
-                    *jac_scaling =  dynamic_cast<MAST::Examples::ThermalJacobianScaling*>(_obj._jac_scaling);
-            jac_scaling->set_assembly(*_obj._nonlinear_assembly);
+
 
 
             bool if_continuation_solver = _obj._if_continuation_solver;
 
             if (!if_continuation_solver) {
 
+                //            // apply scaling on thermal jaobian
+                MAST::Examples::ThermalJacobianScaling
+                        *jac_scaling =  dynamic_cast<MAST::Examples::ThermalJacobianScaling*>(_obj._jac_scaling);
+                jac_scaling->set_assembly(*_obj._nonlinear_assembly);
 
 
                 // now iterate over the load steps
@@ -1854,7 +1861,7 @@ public:  // parametric constructor
 
 
                     //  we can then write the solution into the .exo file which will contain all variables
-                    writer->write_timestep("output_all_steps.exo",
+                    writer->write_timestep("sol_n_r_solver.exo",
                                            *_obj._eq_sys,
                                            inc + 1,
                                            inc + 1);
@@ -1867,7 +1874,7 @@ public:  // parametric constructor
                 jac_scaling->clear_assembly();
             }
             else {
-                jac_scaling->set_enable(false);
+
                 // Solve the system and print displacement degrees-of-freedom to screen.
                 libMesh::Point
                         pt((_obj._length)/2., (_obj._width)/2., 0.), // location of mid-point before shift
@@ -1948,7 +1955,7 @@ public:  // parametric constructor
                     MAST::PseudoArclengthContinuationSolver solver;
                     solver.schur_factorization = _obj._input("if_schur_factorization", "use Schur-factorization in continuation solver", true);
                     solver.min_step            = _obj._input("min_step", "minimum arc-length step-size for continuation solver",          10.);
-
+                    solver.max_it              = _obj._input("max_it", "max nr iterations",          10);
                     // specify temperature as the load parameter to be changed per
                     // load step
                     solver.set_assembly_and_load_parameter(*_obj._nonlinear_elem_ops,
@@ -2065,10 +2072,7 @@ int main(int argc, char* argv[]) {
 
     bool         verify_grads  = _input("verify_grads",  "verify the gradients", false);
 
-    int read =  _input("read",  "input is getting read", 0);
 
-    if (read == 1)
-        std::cout << "input is getting used" << std::endl;
 
     // create and attach sizing optimization object
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization func_eval(init.comm(), _input);
