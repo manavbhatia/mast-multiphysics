@@ -67,14 +67,16 @@ MAST::Examples::ThermalJacobianScaling::set_acceleration_factor(Real f) {
 void
 MAST::Examples::ThermalJacobianScaling::operator() (Real& val) const {
     
-    libmesh_assert(_assembly);
+
     
     if (!_enable) {
         
         val  =  1.;
         return;
     }
-    
+
+    libmesh_assert(_assembly);
+
     Real
     low      = 1.e-2,
     res      = _assembly->res_l2_norm(),

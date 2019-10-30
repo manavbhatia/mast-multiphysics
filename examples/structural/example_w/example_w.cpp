@@ -257,7 +257,7 @@ protected:      // protected member variables
     MAST::FieldFunction<Real>*                  _jac_scaling;
 
     MAST::NonlinearImplicitAssembly*            _nonlinear_assembly;// nonlinear assembly object
-    MAST::EigenproblemAssembly*                 _modal_assembly;// nonlinear assembly object
+   //MAST::EigenproblemAssembly*                 _modal_assembly;// nonlinear assembly object
     MAST::StructuralFluidInteractionAssembly*   _fsi_assembly;// nonlinear assembly object
 
     MAST::TimeDomainFlutterSolver*              _flutter_solver;
@@ -266,7 +266,7 @@ protected:      // protected member variables
     MAST::StructuralNonlinearAssemblyElemOperations*          _nonlinear_elem_ops;
 
     MAST::StressAssembly*                             _stress_assembly;
-    MAST::StructuralModalEigenproblemAssemblyElemOperations*  _modal_elem_ops;
+//    MAST::StructuralModalEigenproblemAssemblyElemOperations*  _modal_elem_ops;
     Real                                      _p_val, _vm_rho;
     bool _if_continuation_solver;
 
@@ -291,7 +291,7 @@ public:  // parametric constructor
             _structural_sys(nullptr),
             _discipline(nullptr),
             _nonlinear_assembly(nullptr),
-            _modal_assembly(nullptr),
+            //_modal_assembly(nullptr),
             _fsi_assembly(nullptr),
             _jac_scaling(nullptr),
             _hoff_plate_f(nullptr),
@@ -307,7 +307,7 @@ public:  // parametric constructor
             _piston_bc(nullptr),
             _flutter_solver(nullptr),
             _stress_assembly(nullptr),
-            _modal_elem_ops(nullptr),
+            //_modal_elem_ops(nullptr),
             _nonlinear_elem_ops(nullptr),
             _length(0.),
             _width(0.),
@@ -421,8 +421,8 @@ public:  // parametric constructor
         _nonlinear_assembly = new MAST::NonlinearImplicitAssembly;// nonlinear assembly object
         _nonlinear_elem_ops = new MAST::StructuralNonlinearAssemblyElemOperations;
 
-        _modal_assembly     = new MAST::EigenproblemAssembly;// nonlinear assembly object
-        _modal_elem_ops     = new MAST::StructuralModalEigenproblemAssemblyElemOperations;
+        //_modal_assembly     = new MAST::EigenproblemAssembly;// nonlinear assembly object
+        //_modal_elem_ops     = new MAST::StructuralModalEigenproblemAssemblyElemOperations;
 
         _stress_assembly    = new MAST::StressAssembly;
 
@@ -472,7 +472,7 @@ public:  // parametric constructor
             delete _weight;
 
             delete _nonlinear_assembly;
-            delete _modal_assembly;
+            //delete _modal_assembly;
             delete _fsi_assembly;
 
             // delete the basis vectors
@@ -1075,6 +1075,11 @@ public:  // parametric constructor
         libmesh_assert_equal_to(dvars.size(), _n_vars);
 
 
+
+        MAST::EigenproblemAssembly                               modal_assembly;
+        MAST::StructuralModalEigenproblemAssemblyElemOperations  modal_elem_ops;
+
+
         // set the parameter values equal to the DV value
         // first the plate thickness values
         for (unsigned int i = 0; i < _n_vars; i++)
@@ -1158,12 +1163,12 @@ public:  // parametric constructor
                     << "modal analysis " << std::endl
                     << "//////////////////////////////////////////////////////////////////////" << std::endl;
 
-        _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
-        _modal_assembly->set_base_solution(steady_sol_wo_aero);
-        _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
-        _sys->eigenproblem_solve(*_modal_elem_ops,*_modal_assembly);
-        _modal_assembly->clear_discipline_and_system();
-        _modal_elem_ops->clear_discipline_and_system();
+        modal_assembly.set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
+        modal_assembly.set_base_solution(*_sys->solution,false);
+        modal_elem_ops.set_discipline_and_system(*_discipline, *_structural_sys);
+        _sys->eigenproblem_solve( modal_elem_ops, modal_assembly);
+        modal_assembly.clear_discipline_and_system();
+        modal_elem_ops.clear_discipline_and_system();
 
 
 
@@ -1640,25 +1645,25 @@ public:  // parametric constructor
 
                 // calculate the sensitivity of the eigenvalues
                 std::vector<Real> eig_sens(nconv);
-                _modal_assembly->set_base_solution(steady_sol_wo_aero);
-                _modal_assembly->set_base_solution(dXdp, true);
-                _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
+                modal_assembly.set_base_solution(steady_sol_wo_aero);
+                modal_assembly.set_base_solution(dXdp, true);
+                modal_assembly.set_discipline_and_system(*_discipline, *_structural_sys);
 
 
-                _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
+                modal_elem_ops.set_discipline_and_system(*_discipline, *_structural_sys);
                 // this should not be necessary, but currently the eigenproblem sensitivity
                 // depends on availability of matrices before sensitivity
 
                 //_sys->assemble_eigensystem(); not needed anymore
 
 
-                _sys->eigenproblem_sensitivity_solve( *_modal_elem_ops,
-                                                      *_modal_assembly,
+                _sys->eigenproblem_sensitivity_solve( modal_elem_ops,
+                                                      modal_assembly,
                                                       *_problem_parameters[i],
                                                       eig_sens);
 
-                _modal_assembly->clear_discipline_and_system();
-                _modal_elem_ops->clear_discipline_and_system();
+                modal_assembly.clear_discipline_and_system();
+                modal_elem_ops.clear_discipline_and_system();
 
                 for (unsigned int j = 0; j < nconv; j++)
                     grads[(i * _n_ineq) + j] = -_dv_scaling[i] * eig_sens[j] / 1.e7;
@@ -1666,8 +1671,8 @@ public:  // parametric constructor
         }
 
 
-        _nonlinear_assembly->clear_discipline_and_system();
-        _modal_elem_ops->clear_discipline_and_system();
+        modal_assembly.clear_discipline_and_system();
+        modal_elem_ops.clear_discipline_and_system();
     }
 
     void clear_stresss() {
