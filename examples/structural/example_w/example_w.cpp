@@ -1926,7 +1926,8 @@ public:  // parametric constructor
                 //dt = 1./(n_temp_steps+n_press_steps-1.);
                         dt =1;
 
-                (*_obj._temp)() = (*_obj._temp)()/50;
+                Real init_step      = _obj._input("init_step", "init_temperature  for c-s",  (*_obj._temp)()/50);
+                (*_obj._temp)() = init_step;
 
 //                MAST::Parameter
 //                        init_temperature("T",     _obj._input( "temp",  "initial temperature",  1.0e-6));
@@ -1972,6 +1973,8 @@ public:  // parametric constructor
                     solver.initialize((*_obj._temp)());
                     // with the search direction defined, we define the arc length
                     // per load step to be a factor of 2 greater than the initial step.
+
+
                     solver.arc_length *= 2;
 
                     for (unsigned int i=0; i<n_temp_steps; i++) {
