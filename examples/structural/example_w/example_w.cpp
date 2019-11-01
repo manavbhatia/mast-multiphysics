@@ -1970,10 +1970,7 @@ public:  // parametric constructor
                             << std::setw(25) << "pressure";
 
                     for (int di = 0; di < _obj._n_eig; di++)
-                        out_eig  << std::setw(25) << "Re of eigenvalue" << di+1 ;
-
-                    for (int di = 0; di < _obj._n_eig; di++)
-                        out_eig  << std::setw(25) << "Im of eigenvalue" << di+1 ;
+                        out_eig  << std::setw(25) << "Re of eigenvalue" << di+1;
 
                     out_eig << std::endl;
                 }
@@ -2024,43 +2021,40 @@ public:  // parametric constructor
                                     << std::setw(25) << vec1[0] << std::endl;
                         }
 
-                        if (i%2 == 0){
+                        if (i%2== 0){
                             _obj._modal_assembly->set_base_solution(*_obj._sys->solution);
                             _obj._sys->eigenproblem_solve( *_obj._modal_elem_ops, *_obj._modal_assembly);
                             unsigned int
                                     nconv = std::min(_obj._sys->get_n_converged_eigenvalues(),
                                                      _obj._sys->get_n_requested_eigenvalues());
 
-                            // vector of eigenvalues
-                            std::vector<Real> eig_vals(nconv);
+                            if (_obj.comm().rank() == 0) {
+                                out_eig
+                                        << std::setw(10) << i
+                                        << std::setw(25) << (*_obj._temp)()
+                                        << std::setw(25) << (*_obj._p_cav)();
+                            }
+
 
                             for (int dj =0 ; dj < nconv; dj++){
                                 // now write the eigenvalue
                                 Real
                                         re = 0.,
                                         im = 0.;
-                                _obj._sys->get_eigenvalue(i, re, im);
+                                _obj._sys->get_eigenvalue(dj, re, im);
 
                                 if (_obj.comm().rank() == 0) {
-                                    out_eig
-                                            << std::setw(10) << i
-                                            << std::setw(25) << (*_obj._temp)()
-                                            << std::setw(25) << (*_obj._p_cav)();
-
-                                    for (int di = 0; di < _obj._n_eig; di++)
-                                        out_eig  << std::setw(25) << re  ;
-
-                                    for (int di = 0; di < _obj._n_eig; di++)
-                                        out_eig  << std::setw(25) << im  ;
-
+                                    out_eig  << std::setw(25) << re  ;
+                                    }
                                 }
-                                re = 0;
-                                im = 0;
+                            if (nconv < _obj._n_eig) {
+                                int diff_eigs = _obj._n_eig - nconv ;
+                                for (int di = 0; di < diff_eigs; di++)
+                                    out_eig << std::setw(25) << "N/A";
                             }
                             out_eig << std::endl;
                             _obj._modal_assembly->clear_base_solution();
                         }
-
                         _obj._sys->time += dt;
 
 
