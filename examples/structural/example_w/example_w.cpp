@@ -257,7 +257,7 @@ protected:      // protected member variables
     MAST::FieldFunction<Real>*                  _jac_scaling;
 
     MAST::NonlinearImplicitAssembly*            _nonlinear_assembly;// nonlinear assembly object
-   //MAST::EigenproblemAssembly*                 _modal_assembly;// nonlinear assembly object
+   MAST::EigenproblemAssembly*                 _modal_assembly;// nonlinear assembly object
     MAST::StructuralFluidInteractionAssembly*   _fsi_assembly;// nonlinear assembly object
 
     MAST::TimeDomainFlutterSolver*              _flutter_solver;
@@ -266,7 +266,7 @@ protected:      // protected member variables
     MAST::StructuralNonlinearAssemblyElemOperations*          _nonlinear_elem_ops;
 
     MAST::StressAssembly*                             _stress_assembly;
-//    MAST::StructuralModalEigenproblemAssemblyElemOperations*  _modal_elem_ops;
+    MAST::StructuralModalEigenproblemAssemblyElemOperations*  _modal_elem_ops;
     Real                                      _p_val, _vm_rho;
     bool _if_continuation_solver;
 
@@ -291,7 +291,7 @@ public:  // parametric constructor
             _structural_sys(nullptr),
             _discipline(nullptr),
             _nonlinear_assembly(nullptr),
-            //_modal_assembly(nullptr),
+            _modal_assembly(nullptr),
             _fsi_assembly(nullptr),
             _jac_scaling(nullptr),
             _hoff_plate_f(nullptr),
@@ -307,7 +307,7 @@ public:  // parametric constructor
             _piston_bc(nullptr),
             _flutter_solver(nullptr),
             _stress_assembly(nullptr),
-            //_modal_elem_ops(nullptr),
+            _modal_elem_ops(nullptr),
             _nonlinear_elem_ops(nullptr),
             _length(0.),
             _width(0.),
@@ -421,8 +421,8 @@ public:  // parametric constructor
         _nonlinear_assembly = new MAST::NonlinearImplicitAssembly;// nonlinear assembly object
         _nonlinear_elem_ops = new MAST::StructuralNonlinearAssemblyElemOperations;
 
-        //_modal_assembly     = new MAST::EigenproblemAssembly;// nonlinear assembly object
-        //_modal_elem_ops     = new MAST::StructuralModalEigenproblemAssemblyElemOperations;
+        _modal_assembly     = new MAST::EigenproblemAssembly;// nonlinear assembly object
+        _modal_elem_ops     = new MAST::StructuralModalEigenproblemAssemblyElemOperations;
 
         _stress_assembly    = new MAST::StressAssembly;
 
@@ -693,10 +693,6 @@ public:  // parametric constructor
         // initialize the equation system
         _eq_sys->init();
 
-        //Loop over the dofs on each processor to initialize the list of non-condensed dofs.
-        //These are the dofs in the system that are not contained in global_dirichlet_dofs_set.
-        _sys->initialize_condensed_dofs(*_discipline);
-
         //The EigenSolver, definig which interface, i.e solver package to use.
         _sys->eigen_solver->set_position_of_spectrum(libMesh::LARGEST_MAGNITUDE);
 
@@ -706,6 +702,12 @@ public:  // parametric constructor
 
         //sets the number of eigenvalues requested
         _sys->set_n_requested_eigenvalues(_n_eig);
+
+        //Loop over the dofs on each processor to initialize the list of non-condensed dofs.
+        //These are the dofs in the system that are not contained in global_dirichlet_dofs_set.
+               _sys->initialize_condensed_dofs(*_discipline);
+
+
 
     }
 
@@ -1076,8 +1078,8 @@ public:  // parametric constructor
 
 
 
-        MAST::EigenproblemAssembly                               modal_assembly;
-        MAST::StructuralModalEigenproblemAssemblyElemOperations  modal_elem_ops;
+        //MAST::EigenproblemAssembly                               modal_assembly;
+        //MAST::StructuralModalEigenproblemAssemblyElemOperations  modal_elem_ops;
 
 
         // set the parameter values equal to the DV value
@@ -1120,6 +1122,9 @@ public:  // parametric constructor
         this->clear_stresss();
         // solve for the steady state at zero velocity
         (*_velocity) = 0.;
+
+
+
         //////////////////////////////////////////////////////////////////////
         // steady state solution
         StiffenedPlateSteadySolverInterface steady_solve(*this,
@@ -1163,12 +1168,12 @@ public:  // parametric constructor
                     << "modal analysis " << std::endl
                     << "//////////////////////////////////////////////////////////////////////" << std::endl;
 
-        modal_assembly.set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
-        modal_assembly.set_base_solution(*_sys->solution,false);
-        modal_elem_ops.set_discipline_and_system(*_discipline, *_structural_sys);
-        _sys->eigenproblem_solve( modal_elem_ops, modal_assembly);
-        modal_assembly.clear_discipline_and_system();
-        modal_elem_ops.clear_discipline_and_system();
+        _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
+        _modal_assembly->set_base_solution(steady_sol_wo_aero);
+        _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
+        _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
+        _modal_assembly->clear_discipline_and_system();
+        _modal_elem_ops->clear_discipline_and_system();
 
 
 
@@ -1645,25 +1650,25 @@ public:  // parametric constructor
 
                 // calculate the sensitivity of the eigenvalues
                 std::vector<Real> eig_sens(nconv);
-                modal_assembly.set_base_solution(steady_sol_wo_aero);
-                modal_assembly.set_base_solution(dXdp, true);
-                modal_assembly.set_discipline_and_system(*_discipline, *_structural_sys);
+                _modal_assembly->set_base_solution(steady_sol_wo_aero);
+                _modal_assembly->set_base_solution(dXdp, true);
+                _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
 
 
-                modal_elem_ops.set_discipline_and_system(*_discipline, *_structural_sys);
+                _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
                 // this should not be necessary, but currently the eigenproblem sensitivity
                 // depends on availability of matrices before sensitivity
 
                 //_sys->assemble_eigensystem(); not needed anymore
 
 
-                _sys->eigenproblem_sensitivity_solve( modal_elem_ops,
-                                                      modal_assembly,
+                _sys->eigenproblem_sensitivity_solve( *_modal_elem_ops,
+                                                      *_modal_assembly,
                                                       *_problem_parameters[i],
                                                       eig_sens);
 
-                modal_assembly.clear_discipline_and_system();
-                modal_elem_ops.clear_discipline_and_system();
+                _modal_assembly->clear_discipline_and_system();
+                _modal_elem_ops->clear_discipline_and_system();
 
                 for (unsigned int j = 0; j < nconv; j++)
                     grads[(i * _n_ineq) + j] = -_dv_scaling[i] * eig_sens[j] / 1.e7;
@@ -1671,8 +1676,8 @@ public:  // parametric constructor
         }
 
 
-        modal_assembly.clear_discipline_and_system();
-        modal_elem_ops.clear_discipline_and_system();
+        _modal_assembly->clear_discipline_and_system();
+        _modal_elem_ops->clear_discipline_and_system();
     }
 
     void clear_stresss() {
@@ -1821,7 +1826,11 @@ public:  // parametric constructor
                                                                 *_obj._structural_sys);
 
 
+            _obj._modal_assembly->set_discipline_and_system(*_obj._discipline,
+                                                                *_obj._structural_sys);
 
+            _obj._modal_elem_ops->set_discipline_and_system(*_obj._discipline,
+                                                                *_obj._structural_sys);
 
             bool if_continuation_solver = _obj._if_continuation_solver;
 
@@ -1942,15 +1951,33 @@ public:  // parametric constructor
 
                 // write the header to the load.txt file
 
-                std::ofstream out;
+                std::ofstream out;   // text file for nl solution
+                std::ofstream out_eig;  // text file for eigenvalues
+
                 if (_obj.comm().rank() == 0) {
+
                     out.open("continuation_solver_load.txt", std::ofstream::out);
                     out
                             << std::setw(10) << "iter"
                             << std::setw(25) << "temperature"
                             << std::setw(25) << "pressure"
                             << std::setw(25) << "displ" << std::endl;
+
+                    out_eig.open("continuation_solver_eig.txt", std::ofstream::out);
+                    out_eig
+                            << std::setw(10) << "iter"
+                            << std::setw(25) << "temperature"
+                            << std::setw(25) << "pressure";
+
+                    for (int di = 0; di < _obj._n_eig; di++)
+                        out_eig  << std::setw(25) << "Re of eigenvalue" << di+1 ;
+
+                    for (int di = 0; di < _obj._n_eig; di++)
+                        out_eig  << std::setw(25) << "Im of eigenvalue" << di+1 ;
+
+                    out_eig << std::endl;
                 }
+
                 // first solve the the temperature increments
                 std::vector<Real> vec1;
                 std::vector<unsigned int> vec2 = {dof_num};
@@ -1996,6 +2023,44 @@ public:  // parametric constructor
                                     << std::setw(25) << (*_obj._p_cav)()
                                     << std::setw(25) << vec1[0] << std::endl;
                         }
+
+                        if (i%5 == 0){
+                            _obj._modal_assembly->set_base_solution(*_obj._sys->solution);
+                            _obj._sys->eigenproblem_solve( *_obj._modal_elem_ops, *_obj._modal_assembly);
+                            unsigned int
+                                    nconv = std::min(_obj._sys->get_n_converged_eigenvalues(),
+                                                     _obj._sys->get_n_requested_eigenvalues());
+
+                            // vector of eigenvalues
+                            std::vector<Real> eig_vals(nconv);
+
+                            for (int dj =0 ; dj < nconv; dj++){
+                                // now write the eigenvalue
+                                Real
+                                        re = 0.,
+                                        im = 0.;
+                                _obj._sys->get_eigenvalue(i, re, im);
+
+                                if (_obj.comm().rank() == 0) {
+                                    out_eig
+                                            << std::setw(10) << i
+                                            << std::setw(25) << (*_obj._temp)()
+                                            << std::setw(25) << (*_obj._p_cav)();
+
+                                    for (int di = 0; di < _obj._n_eig; di++)
+                                        out_eig  << std::setw(25) << re << di+1 ;
+
+                                    for (int di = 0; di < _obj._n_eig; di++)
+                                        out_eig  << std::setw(25) << im << di+1 ;
+
+                                }
+                                re = 0;
+                                im = 0;
+                            }
+                            out_eig << std::endl;
+                            _obj._modal_assembly->clear_base_solution();
+                        }
+
                         _obj._sys->time += dt;
 
 
@@ -2027,6 +2092,9 @@ public:  // parametric constructor
 
             _obj._nonlinear_assembly->clear_discipline_and_system();
             _obj._nonlinear_elem_ops->clear_discipline_and_system();
+
+            _obj._modal_assembly->clear_discipline_and_system();
+            _obj._modal_elem_ops->clear_discipline_and_system();
             return sol;
         }
 
