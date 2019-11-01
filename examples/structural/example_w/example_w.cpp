@@ -2024,7 +2024,7 @@ public:  // parametric constructor
                                     << std::setw(25) << vec1[0] << std::endl;
                         }
 
-                        if (i%5 == 0){
+                        if (i%2 == 0){
                             _obj._modal_assembly->set_base_solution(*_obj._sys->solution);
                             _obj._sys->eigenproblem_solve( *_obj._modal_elem_ops, *_obj._modal_assembly);
                             unsigned int
@@ -2048,10 +2048,10 @@ public:  // parametric constructor
                                             << std::setw(25) << (*_obj._p_cav)();
 
                                     for (int di = 0; di < _obj._n_eig; di++)
-                                        out_eig  << std::setw(25) << re << di+1 ;
+                                        out_eig  << std::setw(25) << re  ;
 
                                     for (int di = 0; di < _obj._n_eig; di++)
-                                        out_eig  << std::setw(25) << im << di+1 ;
+                                        out_eig  << std::setw(25) << im  ;
 
                                 }
                                 re = 0;
