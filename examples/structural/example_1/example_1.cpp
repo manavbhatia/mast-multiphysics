@@ -27,6 +27,7 @@
 #include <libmesh/equation_systems.h>
 #include <libmesh/fe_type.h>
 #include <libmesh/numeric_vector.h>
+#include <base/eigenproblem_assembly.h>
 
 // MAST includes.
 #include "base/nonlinear_system.h"
@@ -39,6 +40,10 @@
 #include "property_cards/solid_1d_section_element_property_card.h"
 #include "base/nonlinear_implicit_assembly.h"
 #include "elasticity/structural_nonlinear_assembly.h"
+#include "solver/slepc_eigen_solver.h"
+#include "elasticity/structural_modal_eigenproblem_assembly.h"
+#include "base/physics_discipline_base.h"
+
 
 int main(int argc, const char** argv)
 {
@@ -64,6 +69,9 @@ int main(int argc, const char** argv)
     // Add system of type MAST::NonlinearSystem (which wraps libMesh::NonlinearImplicitSystem) to the EquationSystems container.
     //   We name the system "structural" and also get a reference to the system so we can easily reference it later.
     MAST::NonlinearSystem & system = equation_systems.add_system<MAST::NonlinearSystem>("structural");
+
+    // solve eigenproblem around steady state
+    system.set_eigenproblem_type(libMesh::GHEP);
 
     // Create a finite element type for the system. Here we use first order
     // Lagrangian-type finite elements.
@@ -93,6 +101,13 @@ int main(int argc, const char** argv)
     // This initialization process is basically a pre-processing step to
     // preallocate storage and spread it across processors.
     equation_systems.init();
+
+    //The EigenSolver, definig which interface, i.e solver package to use.
+    system.eigen_solver->set_position_of_spectrum(libMesh::LARGEST_MAGNITUDE);
+    system.set_exchange_A_and_B(true);
+    system.set_n_requested_eigenvalues(4);
+
+
     equation_systems.print_info();
 
     // Create parameters.
@@ -102,6 +117,7 @@ int main(int argc, const char** argv)
     MAST::Parameter nu("nu", 0.33);
     MAST::Parameter zero("zero", 0.0);
     MAST::Parameter pressure("p", 2.0e4);
+    MAST::Parameter rho("rho", 1);
 
     // Create ConstantFieldFunctions used to spread parameters throughout the model.
     MAST::ConstantFieldFunction thy_f("hy", thickness_y);
@@ -111,6 +127,7 @@ int main(int argc, const char** argv)
     MAST::ConstantFieldFunction hyoff_f("hy_off", zero);
     MAST::ConstantFieldFunction hzoff_f("hz_off", zero);
     MAST::ConstantFieldFunction pressure_f("pressure", pressure);
+    MAST::ConstantFieldFunction rho_f("rho", rho);
 
     // Initialize load.
     // TODO - Switch this to a concentrated/point load on the right end of the bar.
@@ -123,6 +140,7 @@ int main(int argc, const char** argv)
     MAST::IsotropicMaterialPropertyCard material;
     material.add(E_f);
     material.add(nu_f);
+    material.add(rho_f);
 
     // Create the section property card. Attach all property values.
     MAST::Solid1DSectionElementPropertyCard section;
@@ -157,6 +175,15 @@ int main(int argc, const char** argv)
 
     // Solve the system and print displacement degrees-of-freedom to screen.
     nonlinear_system.solve(elem_ops, assembly);
+
+    MAST::EigenproblemAssembly                               modal_assembly;
+    MAST::StructuralModalEigenproblemAssemblyElemOperations  modal_elem_ops;
+
+    modal_assembly.set_discipline_and_system(discipline, structural_system); // modf_w
+    modal_assembly.set_base_solution(*nonlinear_system.solution);
+    modal_elem_ops.set_discipline_and_system(discipline, structural_system);
+    system.eigenproblem_solve( modal_elem_ops, modal_assembly);
+
     nonlinear_system.solution->print_global();
 
     // END_TRANSLATE
