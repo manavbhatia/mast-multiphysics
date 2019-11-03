@@ -159,9 +159,13 @@ initialize_green_lagrange_strain_operator(const unsigned int qp,
 
     const std::vector<std::vector<libMesh::RealVectorValue> >&
     dphi = fe.get_dphi();
+
+
     
     unsigned int n_phi = (unsigned int)dphi.size();
-    RealVectorX phi  = RealVectorX::Zero(n_phi);
+    RealVectorX phi  = RealVectorX::Zero(n_phi),
+                phi1  = RealVectorX::Zero(n_phi);
+
     
     // make sure all matrices are the right size
     libmesh_assert_equal_to(epsilon.size(), 3);
@@ -179,8 +183,10 @@ initialize_green_lagrange_strain_operator(const unsigned int qp,
     
     // now set the shape function values
     // dN/dx
-    for ( unsigned int i_nd=0; i_nd<n_phi; i_nd++ )
+    for ( unsigned int i_nd=0; i_nd<n_phi; i_nd++ ) {
         phi(i_nd) = dphi[i_nd][qp](0);
+        phi1(i_nd) = 0;
+    }
     // linear strain operator
     Bmat_lin.set_shape_function(0, 0, phi); //  epsilon_xx = du/dx
     Bmat_lin.set_shape_function(2, 1, phi); //  gamma_xy = dv/dx + ...
@@ -188,12 +194,12 @@ initialize_green_lagrange_strain_operator(const unsigned int qp,
     if (_property.strain_type() == MAST::NONLINEAR_STRAIN) {
         
         // nonlinear strain operator in x
-        Bmat_nl_x.set_shape_function(0, 0, phi); // du/dx
-        Bmat_nl_x.set_shape_function(1, 1, phi); // dv/dx
+        Bmat_nl_x.set_shape_function(0, 0, phi1); // du/dx
+        Bmat_nl_x.set_shape_function(1, 1, phi1); // dv/dx
         
         // nonlinear strain operator in u
-        Bmat_nl_u.set_shape_function(0, 0, phi); // du/dx
-        Bmat_nl_v.set_shape_function(0, 1, phi); // dv/dx
+        Bmat_nl_u.set_shape_function(0, 0, phi1); // du/dx
+        Bmat_nl_v.set_shape_function(0, 1, phi1); // dv/dx
     }
     
     // dN/dy
@@ -206,20 +212,20 @@ initialize_green_lagrange_strain_operator(const unsigned int qp,
     if (_property.strain_type() == MAST::NONLINEAR_STRAIN) {
         
         // nonlinear strain operator in y
-        Bmat_nl_y.set_shape_function(0, 0, phi); // du/dy
-        Bmat_nl_y.set_shape_function(1, 1, phi); // dv/dy
+        Bmat_nl_y.set_shape_function(0, 0, phi1); // du/dy
+        Bmat_nl_y.set_shape_function(1, 1, phi1); // dv/dy
         
         // nonlinear strain operator in v
-        Bmat_nl_u.set_shape_function(1, 0, phi); // du/dy
-        Bmat_nl_v.set_shape_function(1, 1, phi); // dv/dy
+        Bmat_nl_u.set_shape_function(1, 0, phi1); // du/dy
+        Bmat_nl_v.set_shape_function(1, 1, phi1); // dv/dy
         
         // calculate the displacement gradient to create the
         RealVectorX
         ddisp_dx = RealVectorX::Zero(2),
         ddisp_dy = RealVectorX::Zero(2);
         
-        Bmat_nl_x.vector_mult(ddisp_dx, local_disp);  // {du/dx, dv/dx, dw/dx}
-        Bmat_nl_y.vector_mult(ddisp_dy, local_disp);  // {du/dy, dv/dy, dw/dy}
+        //Bmat_nl_x.vector_mult(ddisp_dx, local_disp);  // {du/dx, dv/dx, dw/dx}
+        //Bmat_nl_y.vector_mult(ddisp_dy, local_disp);  // {du/dy, dv/dy, dw/dy}
         
         // prepare the deformation gradient matrix
         RealMatrixX
@@ -232,9 +238,9 @@ initialize_green_lagrange_strain_operator(const unsigned int qp,
         E = 0.5*(F + F.transpose() + F.transpose() * F);
         
         // now, add this to the strain vector
-        epsilon(0) = E(0,0);
-        epsilon(1) = E(1,1);
-        epsilon(2) = E(0,1) + E(1,0);
+//        epsilon(0) = E(0,0);
+//        epsilon(1) = E(1,1);
+//        epsilon(2) = E(0,1) + E(1,0);
         
         // now initialize the matrices with strain components
         // that multiply the Bmat_nl terms
@@ -243,6 +249,8 @@ initialize_green_lagrange_strain_operator(const unsigned int qp,
         
         mat_y.row(1) =     ddisp_dy;
         mat_y.row(2) =     ddisp_dx;
+
+        Bmat_lin.vector_mult(epsilon, local_disp);
     }
     else
         Bmat_lin.vector_mult(epsilon, local_disp);

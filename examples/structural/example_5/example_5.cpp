@@ -2616,7 +2616,7 @@ int main(int argc, char* argv[]) {
     }
     else if (s == "snopt") {
         
-        optimizer.reset(new MAST::NPSOLOptimizationInterface);
+        //optimizer.reset(new MAST::NPSOLOptimizationInterface);
     }
     else {
         
