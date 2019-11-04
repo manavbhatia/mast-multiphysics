@@ -269,6 +269,7 @@ protected:      // protected member variables
     MAST::StructuralModalEigenproblemAssemblyElemOperations*  _modal_elem_ops;
     Real                                      _p_val, _vm_rho;
     bool _if_continuation_solver;
+    MAST::StressStrainOutputBase*               _stress_elem;
 
 public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
@@ -307,6 +308,7 @@ public:  // parametric constructor
             _piston_bc(nullptr),
             _flutter_solver(nullptr),
             _stress_assembly(nullptr),
+            _stress_elem(nullptr),
             _modal_elem_ops(nullptr),
             _nonlinear_elem_ops(nullptr),
             _length(0.),
@@ -425,6 +427,8 @@ public:  // parametric constructor
         _modal_elem_ops     = new MAST::StructuralModalEigenproblemAssemblyElemOperations;
 
         _stress_assembly    = new MAST::StressAssembly;
+        _stress_elem        = new MAST::StressStrainOutputBase;
+
 
         _fsi_assembly       = new MAST::StructuralFluidInteractionAssembly;// nonlinear assembly object
 
@@ -1005,8 +1009,6 @@ public:  // parametric constructor
         _discipline->add_volume_load(0, *_p_load);          // for the panel
     }
 
-
-
     void _init_nullspace(){
 
         _nsp = new MAST::StructuralNearNullVectorSpace;
@@ -1132,15 +1134,16 @@ public:  // parametric constructor
                                                          false,
                                                          _n_load_steps);
 
-        libMesh::out <<
-                     "//////////////////////////////////////////////////////////////////////" << std::endl;
-        if (!_if_continuation_solver)
-            libMesh::out << "Steady state solution w/ Newton raphson solver " << std::endl;
-        else
-            libMesh::out << "Steady state solution w/ continuation solver " << std::endl;
-        libMesh::out <<
-                     "//////////////////////////////////////////////////////////////////////" << std::endl;
-
+        if (_if_vk) {
+            libMesh::out <<
+                         "//////////////////////////////////////////////////////////////////////" << std::endl;
+            if (!_if_continuation_solver)
+                libMesh::out << "Steady state solution w/ Newton raphson solver " << std::endl;
+            else
+                libMesh::out << "Steady state solution w/ continuation solver " << std::endl;
+            libMesh::out <<
+                         "//////////////////////////////////////////////////////////////////////" << std::endl;
+        }
         steady_solve.solve();
         // use this solution as the base solution later if no flutter is found.
         libMesh::NumericVector<Real> &
@@ -1172,9 +1175,9 @@ public:  // parametric constructor
         _modal_assembly->set_base_solution(steady_sol_wo_aero);
         _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
         _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
-        _modal_assembly->clear_discipline_and_system();
-        _modal_elem_ops->clear_discipline_and_system();
-
+        //_modal_assembly->clear_base_solution();
+        //_modal_assembly->clear_discipline_and_system();
+        //_modal_elem_ops->clear_discipline_and_system();
 
 
         unsigned int
@@ -1238,6 +1241,7 @@ public:  // parametric constructor
 
         //////////////////////////////////////////////////////////////////////
         // perform the flutter analysis
+        //////////////////////////////////////////////////////////////////////
 
         std::pair<bool, MAST::FlutterRootBase *> sol(false, nullptr);
 
@@ -1280,34 +1284,63 @@ public:  // parametric constructor
         // aero as the base solution for all the following computations
         // Otherwise, the equilibrium state is dependent on the velocity.
         if (!sol.second) {
-
             // velocity should be set to zero for all residual calculations
             (*_velocity) = 0.;
             steady_solve.solution() = steady_sol_wo_aero;
             *_sys->solution = steady_sol_wo_aero;
         }
 
+        //////////////////////////////////////////////////////////////////////
+        //  plot stress solution
+        //////////////////////////////////////////////////////////////////////
+        if (if_write_output) {
+
+
+
+            _stress_elem->set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
+            _stress_elem->set_participating_elements_to_all();
+            _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
+            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+            _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
+
+            libMesh::out << "Writing output to : output.exo" << std::endl;
+
+            //std::set<std::string> nm;
+            //nm.insert(_sys->name());
+            // write the solution for visualization
+            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
+                                                                *_eq_sys);//,&nm);
+
+            _stress_elem->clear_discipline_and_system();
+            _stress_assembly->clear_discipline_and_system();
+        }
+
+
+        if (sol.second && if_write_output) {
+
+            MAST::plot_structural_flutter_solution("structural_flutter_mode.exo",
+                                                   *_sys,
+                                                   sol.second->eig_vec_right,
+                                                   _basis);
+        }
+
+
 
 
         //////////////////////////////////////////////////////////////////////
-        // evaluate the stress constraint
-        //////////////////////////////////////////////////////////////////////
-
         // now calculate the stress output based on the velocity output
+        //////////////////////////////////////////////////////////////////////
+
         _nonlinear_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
-
-
-        // sys-> solution is where the solution is stored in this case solution is displacement
-        // and it is needed by the functionalily calculate_output in non_linear_assembly to calculate
-        // outputs[i] which is in this case stress at each element
-
-        //question how does _nonlinear_assembly knows that stress is the output required?
-        //         why are we repeating the same operation and storing it in _outputs[i] ?
-
         for (int i=0; i < _outputs.size(); i++){
             _nonlinear_assembly->calculate_output(*_sys->solution,*_outputs[i]);
         }
         _nonlinear_assembly->clear_discipline_and_system();
+
+
+
+
+
 
         //////////////////////////////////////////////////////////////////////
         // get the objective
@@ -1360,8 +1393,6 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
 
         if (nconv) {
-
-
             // set the eigenvalue constraints  -eig <= 0. scale
             // by an arbitrary 1/1.e7 factor
             for (unsigned int i = 0; i < nconv; i++)
@@ -1372,57 +1403,12 @@ public:  // parametric constructor
         // evaluate the flutter constraint
         //////////////////////////////////////////////////////////////////////
 
-        fvals[_n_eig + 0] = -100.;
-
-
-
-
-        if (if_write_output) {
-
-
-            // why do we need to update the stress here  ?
-
-//                for (int i=0; i < _outputs.size(); i++) {
-
-            MAST::StressStrainOutputBase stress_elem;
-
-            stress_elem.set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
-            stress_elem.set_participating_elements_to_all();
-
-            stress_elem.set_discipline_and_system(*_discipline,*_structural_sys);
-
-            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
-
-
-            _stress_assembly->update_stress_strain_data(stress_elem, *_sys->solution);
-//                }
-
-
-            libMesh::out << "Writing output to : output.exo" << std::endl;
-
-            std::set<std::string> nm;
-            nm.insert(_sys->name());
-            // write the solution for visualization
-            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
-                                                                *_eq_sys,
-                                                                &nm);
-
-
-        }
-
-
-        if (sol.second && if_write_output) {
-
-            MAST::plot_structural_flutter_solution("structural_flutter_mode.exo",
-                                                   *_sys,
-                                                   sol.second->eig_vec_right,
-                                                   _basis);
-        }
-
-
-
-
-
+        if (!if_all_eig_positive)
+            fvals[_n_eig+0]  =  100.;
+        else if (sol.second)
+            fvals[_n_eig+0]  =  _V0_flutter/sol.second->V - 1.;
+        else
+            fvals[_n_eig+0]  =  -100.;
 
 
         //////////////////////////////////////////////////////////////////
@@ -1543,7 +1529,7 @@ public:  // parametric constructor
                 // iterate over each dv and calculate the sensitivity
                 libMesh::NumericVector<Real> &dXdp = _sys->add_sensitivity_solution(0);
                 dXdp.zero();
-                this->clear_stresss();
+
 
                 // sensitivity analysis
                 _nonlinear_assembly->set_discipline_and_system(*_discipline,
@@ -1650,33 +1636,26 @@ public:  // parametric constructor
 
                 // calculate the sensitivity of the eigenvalues
                 std::vector<Real> eig_sens(nconv);
-                _modal_assembly->set_base_solution(steady_sol_wo_aero);
+
                 _modal_assembly->set_base_solution(dXdp, true);
-                _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
-
-
-                _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
-                // this should not be necessary, but currently the eigenproblem sensitivity
-                // depends on availability of matrices before sensitivity
-
-                //_sys->assemble_eigensystem(); not needed anymore
-
-
                 _sys->eigenproblem_sensitivity_solve( *_modal_elem_ops,
                                                       *_modal_assembly,
                                                       *_problem_parameters[i],
                                                       eig_sens);
 
-                _modal_assembly->clear_discipline_and_system();
-                _modal_elem_ops->clear_discipline_and_system();
 
-                for (unsigned int j = 0; j < nconv; j++)
+                _modal_assembly->clear_base_solution(true);
+
+                for (unsigned int j = 0; j < nconv; j++) {
                     grads[(i * _n_ineq) + j] = -_dv_scaling[i] * eig_sens[j] / 1.e7;
+                }
+
             }
         }
 
 
         _modal_assembly->clear_discipline_and_system();
+        _modal_assembly->clear_base_solution();
         _modal_elem_ops->clear_discipline_and_system();
     }
 
@@ -1707,29 +1686,24 @@ public:  // parametric constructor
                     << std::setw(20) << (*_problem_parameters[i])() << std::endl;
 
 
+
+
         // write the solution for visualization
 
-        for (int i=0; i < _outputs.size(); i++) {
-            _stress_assembly->update_stress_strain_data(*_outputs[i], *_sys->solution);
-        }
+        _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
+        _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+        _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
 
         libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
                                                             *_eq_sys);
+
+        _stress_elem->clear_discipline_and_system();
+        _stress_assembly->clear_discipline_and_system();
 
         MAST::FunctionEvaluation::output(iter, x, obj, fval, if_write_to_optim_file);
     }
 
 
-    //MAST::FunctionEvaluation::funobj
-    //get_objective_evaluation_function() {
-    //   return stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj;
-    //}
-
-
-    //MAST::FunctionEvaluation::funcon
-    //get_constraint_evaluation_function() {
-    //   return stiffened_plate_thermally_stressed_piston_theory_flutter_optim_con;
-    //}
 
     class StiffenedPlateSteadySolverInterface:
             public MAST::FlutterSolverBase::SteadySolver {
