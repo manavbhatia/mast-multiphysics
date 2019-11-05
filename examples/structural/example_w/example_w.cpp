@@ -204,8 +204,6 @@ protected:      // protected member variables
             _thz_stiff_f; // one per stiffener
     // vector of basis vectors from modal analysis
     std::vector<libMesh::NumericVector<Real> *> _basis;
-    // output quantity objects to evaluate stress
-    std::vector<MAST::StressStrainOutputBase *> _outputs;
     // stationwise function objects for thickness
     std::vector<MAST::ConstantFieldFunction *>
             _th_station_functions_plate,
@@ -270,7 +268,8 @@ protected:      // protected member variables
     Real                                      _p_val, _vm_rho;
     bool _if_continuation_solver;
     MAST::StressStrainOutputBase*               _stress_elem;
-
+    // output quantity objects to evaluate stress
+    std::vector<MAST::StressStrainOutputBase *> _outputs;
 public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
                                                                   MAST::Examples::GetPotWrapper& input) :
@@ -1018,8 +1017,56 @@ public:  // parametric constructor
     void _init_outputs(){
         // create the output objects, one for each element
 
+        int mod =   1;
+
+        if (mod) {
+            _outputs.resize(_mesh->n_elem(), nullptr);
+
+            for (int i = 0; i < _mesh->n_elem(); i++) {
+                MAST::StressStrainOutputBase *output = new MAST::StressStrainOutputBase;
+                output->set_discipline_and_system(*_discipline, *_structural_sys);
+                _outputs[i] = output;
+        }
 
 
+        std::vector<unsigned int> n_size(comm().size(), 0);
+
+        for (int i = 0; i < comm().size(); i++) {
+            n_size[i] = _mesh->n_elem_on_proc(i);
+        }
+
+            std::cout << "number of elems on proc " << 0 << " is  " << n_size[0] << std::endl;
+            std::cout << "number of elems on proc " << 1 << " is  " << n_size[1] << std::endl;
+        //       n[comm().rank()] = _mesh->n_local_elem();
+        //     comm().sum(n);
+
+            std::vector<unsigned int> prev_elems((comm().size() ), 0);
+            int i = 0;
+
+
+        if (comm().rank() != 0) {
+            for (int j = 0; j < comm().rank() ; j++)
+                prev_elems[comm().rank()] += n_size[j];
+        }
+
+        comm().sum(prev_elems);
+
+        for (int j =0 ; j < comm().size() ; j++)
+        std::cout << "prev elems on " << j << " is  " << prev_elems[j] << std::endl;
+
+        libMesh::MeshBase::const_element_iterator
+                e_it = _mesh->local_elements_begin(),
+                e_end = _mesh->local_elements_end();
+
+        for (; e_it != e_end; e_it++) {
+            _outputs[ (i + prev_elems[comm().rank()]) ]->set_participating_elements({*e_it});
+            _outputs[ (i + prev_elems[comm().rank()]) ]->set_aggregation_coefficients(_p_val, 1.0, _vm_rho, _stress_limit);
+
+            i += 1;
+        }
+
+    }
+    else{
         libMesh::MeshBase::const_element_iterator
                 e_it = _mesh->local_elements_begin(),
                 e_end = _mesh->local_elements_end();
@@ -1036,24 +1083,15 @@ public:  // parametric constructor
 
             _outputs.push_back(output);
 
-
-//                // tell the object to evaluate the data for this object only
-//                std::set<const libMesh::Elem*> e_set;
-//                e_set.insert(*e_it);
-//                output->set_elements_in_domain(e_set);
-//                output->set_points_for_evaluation(pts);
-//                output->set_volume_loads(_discipline->volume_loads());
-//                _outputs.push_back(output);
-
-            //_discipline->add_volume_output((*e_it)->subdomain_id(), *output);
         }
 
 
         // make sure that the number of output objects here is the same as the
         // number of local elems in the mesh
-        libmesh_assert_equal_to(_outputs.size(), _mesh->n_local_elem());
 
-
+        //libmesh_assert_equal_to(_outputs.size(), _mesh->n_elem());
+        libMesh::out << "loop exited"  << std::endl;
+    }
     }
 
     virtual void init_dvar(std::vector<Real>& x,
@@ -1105,23 +1143,28 @@ public:  // parametric constructor
                     << "th     [ " << std::setw(10) << i << " ] = "
                     << std::setw(20) << (*_problem_parameters[i])() << std::endl;
 
+        bool
+                if_write_output = true;
 
+        //////////////////////////////////////////////////////////////////////
+        libMesh::out << "calculation of wheight " << std::endl;
         // the optimization problem is defined as
         // min weight, subject to constraints on displacement and stresses
         Real
                 wt = 0.;
                // pval = 2.;
-
-        bool
-                if_write_output = true;
-
-        //////////////////////////////////////////////////////////////////////
         // calculate weight
         (*_weight)(pt, 0., wt);
+        libMesh::out << " wheight calculated " << std::endl;
         //////////////////////////////////////////////////////////////////////
+        libMesh::out << " clear the solution " << std::endl;
         // first zero the solution
         _sys->solution->zero();
+        libMesh::out << "solution cleared" << std::endl;
+        //////////////////////////////////////////////////////////////////////
+        libMesh::out << "clear stress " << std::endl;
         this->clear_stresss();
+        libMesh::out << "stress cleared" << std::endl;
         // solve for the steady state at zero velocity
         (*_velocity) = 0.;
 
