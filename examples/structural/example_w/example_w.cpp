@@ -1445,6 +1445,12 @@ public:  // parametric constructor
             if_sens = (if_sens || eval_grads[i]);
 
 
+
+        libMesh::out <<
+                     "//////////////////////////////////////////////////////////////////////" << std::endl
+                     << "Sensitivity analysis " << std::endl
+                     << "//////////////////////////////////////////////////////////////////////" << std::endl;
+
         //if_sens = false; //
 
         if (if_sens) {
@@ -1518,6 +1524,8 @@ public:  // parametric constructor
 
             // we are going to choose to use one parametric sensitivity at a time
             for (unsigned int i = 0; i < _n_vars; i++) {
+
+                libMesh::out << "design variable " << i << std::endl;
 
                     params[0].second = _problem_parameters[i];
 
@@ -2116,7 +2124,7 @@ int main(int argc, char* argv[]) {
 
     bool         verify_grads  = _input("verify_grads",  "verify the gradients", false);
 
-
+    //verify_grads = true;
 
     // create and attach sizing optimization object
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization func_eval(init.comm(), _input);
