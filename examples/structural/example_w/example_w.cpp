@@ -1017,14 +1017,12 @@ public:  // parametric constructor
     void _init_outputs(){
         // create the output objects, one for each element
 
-        int mod =   1;
-
-        if (mod) {
             _outputs.resize(_mesh->n_elem(), nullptr);
 
             for (int i = 0; i < _mesh->n_elem(); i++) {
                 MAST::StressStrainOutputBase *output = new MAST::StressStrainOutputBase;
                 output->set_discipline_and_system(*_discipline, *_structural_sys);
+                output->set_aggregation_coefficients(_p_val, 1.0, _vm_rho, _stress_limit);
                 _outputs[i] = output;
         }
 
@@ -1040,7 +1038,7 @@ public:  // parametric constructor
         //       n[comm().rank()] = _mesh->n_local_elem();
         //     comm().sum(n);
 
-        std::vector<unsigned int> prev_elems((comm().size() ), 0);
+        std::vector<unsigned int> prev_elems(comm().size() , 0);
 
         if (comm().rank() != 0) {
             for (int j = 0; j < comm().rank() ; j++)
@@ -1049,8 +1047,6 @@ public:  // parametric constructor
 
         comm().sum(prev_elems);
 
-       // for (int j =0 ; j < comm().size() ; j++)
-        //std::cout << "prev elems on " << j << " is  " << prev_elems[j] << std::endl;
 
         libMesh::MeshBase::const_element_iterator
                 e_it = _mesh->local_elements_begin(),
@@ -1059,7 +1055,6 @@ public:  // parametric constructor
         int i = 0;
         for (; e_it != e_end; e_it++) {
             _outputs[ (i + prev_elems[comm().rank()]) ]->set_participating_elements({*e_it});
-            _outputs[ (i + prev_elems[comm().rank()]) ]->set_aggregation_coefficients(_p_val, 1.0, _vm_rho, _stress_limit);
 
             i += 1;
         }
@@ -1068,33 +1063,8 @@ public:  // parametric constructor
             libMesh::out << "_outputs is not the correct size " << std::endl;
 
             libmesh_assert_equal_to(_outputs.size(), _mesh->n_elem());
-    }
-    else{
-        libMesh::MeshBase::const_element_iterator
-                e_it = _mesh->local_elements_begin(),
-                e_end = _mesh->local_elements_end();
 
 
-        for (; e_it != e_end; e_it++) {
-
-            MAST::StressStrainOutputBase *output = new MAST::StressStrainOutputBase;
-
-
-            output->set_discipline_and_system(*_discipline, *_structural_sys);
-            output->set_participating_elements({*e_it});
-            output->set_aggregation_coefficients(_p_val,1.0,_vm_rho,_stress_limit);
-
-            _outputs.push_back(output);
-
-        }
-
-
-        // make sure that the number of output objects here is the same as the
-        // number of local elems in the mesh
-
-        //libmesh_assert_equal_to(_outputs.size(), _mesh->n_elem());
-        //libMesh::out << "loop exited"  << std::endl;
-    }
     }
 
     virtual void init_dvar(std::vector<Real>& x,
@@ -1379,6 +1349,20 @@ public:  // parametric constructor
         _nonlinear_assembly->clear_discipline_and_system();
 
 
+        std::string nm;
+        std::ofstream out_stress;
+        if (comm().rank() == 0)
+            nm ="stresses.txt";
+        //if (comm().rank() == 1)
+         //   nm ="stressespr1.txt";
+
+        out_stress.open(nm, std::ofstream::out);
+        out_stress << std::setw(10) << "stresses"
+                   << std::endl;
+        for (int di = 0; di < _outputs.size(); di++)
+            out_stress << std::setw(10) << _outputs[di]->output_total()
+                       << std::endl;
+
         //////////////////////////////////////////////////////////////////////
         // get the objective
         //////////////////////////////////////////////////////////////////////
@@ -1400,29 +1384,39 @@ public:  // parametric constructor
         // be mapped to unique spots by identifying the number of elements on each
         // subdomain
 
-        std::vector<unsigned int>
-                beginning_elem_id(this->comm().size(), 0);
-        for (unsigned int i = 1; i < this->comm().size(); i++)
-            beginning_elem_id[i] = _mesh->n_elem_on_proc(i - 1);
-
-        // now use this info to identify the beginning elem id
-        for (unsigned int i = 2; i < this->comm().size(); i++)
-            beginning_elem_id[i] += beginning_elem_id[i - 1];
-
-        const unsigned int
-                my_id0 = beginning_elem_id[this->comm().rank()];
-
 
         // copy the element von Mises stress values as the functions
         for (unsigned int i = 0; i < _outputs.size(); i++)
-            fvals[_n_eig + 1 + i + my_id0] = -1. +
-                                             _outputs[i]->output_total() /
+            fvals[_n_eig + 1 + i ] = -1. +   _outputs[i]->output_total() /
                                              _stress_limit;
 
-        // now sum the value of the stress constraints, so that all ranks
-        // have the same values
-        for (unsigned int i = 0; i < _n_elems; i++)
-            this->comm().sum(fvals[_n_eig + 1 + i]);
+
+        // thre should be ne summation here
+//        std::vector<unsigned int>
+//                beginning_elem_id(this->comm().size(), 0);
+//        for (unsigned int i = 1; i < this->comm().size(); i++)
+//            beginning_elem_id[i] = _mesh->n_elem_on_proc(i - 1);
+//
+//        // now use this info to identify the beginning elem id
+//        for (unsigned int i = 2; i < this->comm().size(); i++)
+//            beginning_elem_id[i] += beginning_elem_id[i - 1];
+//
+//        const unsigned int
+//                my_id0 = beginning_elem_id[this->comm().rank()];
+//
+//
+//        // copy the element von Mises stress values as the functions
+//        for (unsigned int i = 0; i < _outputs.size(); i++)
+//            fvals[_n_eig + 1 + i + my_id0] = -1. +
+//                                             _outputs[i]->output_total() /
+//                                             _stress_limit;
+
+
+
+//        // now sum the value of the stress constraints, so that all ranks
+//        // have the same values
+//        for (unsigned int i = 0; i < _n_elems; i++)
+//            this->comm().sum(fvals[_n_eig + 1 + i]);
 
 
         //////////////////////////////////////////////////////////////////////
@@ -1446,6 +1440,19 @@ public:  // parametric constructor
 //            fvals[_n_eig+0]  =  _V0_flutter/sol.second->V - 1.;
 //        else
             fvals[_n_eig+0]  =  -100.;
+
+
+
+        std::ofstream out_f_vals;
+        if (comm().rank() == 0) {
+
+            out_f_vals.open("f_vals.txt", std::ofstream::out);
+            out_f_vals << std::setw(10) << "f_vals"
+                       << std::endl;
+            for (int di = 0; di < _n_ineq ; di++)
+                out_f_vals << std::setw(10) << fvals[di]
+                           << std::endl;
+        }
 
 
         //////////////////////////////////////////////////////////////////
@@ -1564,10 +1571,6 @@ public:  // parametric constructor
             for (unsigned int i = 0; i < _n_vars; i++) {
                 libMesh::out << "design variable " << i << std::endl;
 
-                //params[0].second = _problem_parameters[i];
-
-
-
                 // iterate over each dv and calculate the sensitivity
                 libMesh::NumericVector<Real> &dXdp = _sys->add_sensitivity_solution(0);
                 dXdp.zero();
@@ -1595,15 +1598,17 @@ public:  // parametric constructor
                 // would need to include the latter component, which was added
                 // above.
                 for (unsigned int j = 0; j < _mesh->n_elem(); j++) {
-                    grads[(i * _n_ineq) + (j + _n_eig + 1 + my_id0)] = _dv_scaling[i] / _stress_limit *
+                    grads[(i * _n_ineq) + (j + _n_eig + 1 )] = _dv_scaling[i] / _stress_limit *
                                                                        _outputs[j]->output_sensitivity_total(
                                                                                *_problem_parameters[i]);
                 }
 
-                // now, sum the sensitivity of the stress function gradients
-                // so that all processors have the same values
-                for (unsigned int j = 0; j < _mesh->n_elem(); j++)
-                    this->comm().sum(grads[(i * _n_ineq) + (j + _n_eig + 1)]);
+                // there should be no summation here since it is done internally
+
+//                // now, sum the sensitivity of the stress function gradients
+//                // so that all processors have the same values
+//                for (unsigned int j = 0; j < _mesh->n_elem(); j++)
+//                    this->comm().sum(grads[(i * _n_ineq) + (j + _n_eig + 1)]);
 
 
                 // if all eigenvalues are positive, calculate at the sensitivity of
@@ -1635,7 +1640,7 @@ public:  // parametric constructor
 
                     // add the partial derivative of stress due to velocity sensitivity
                     for (unsigned int j = 0; j < _outputs.size(); j++)
-                        grads[(i * _n_ineq) + (j + _n_eig + 1 + my_id0)] += _dv_scaling[i] / _stress_limit *
+                        grads[(i * _n_ineq) + (j + _n_eig + 1 )] += _dv_scaling[i] / _stress_limit *
                                                                             dsigma_dV[j] * sol.second->V_sens;
 
                     // The natural frequencies were calculated about a base solution
@@ -1691,6 +1696,19 @@ public:  // parametric constructor
             _modal_elem_ops->clear_discipline_and_system();
 
             libMesh::out << "** sensitivity analysis DONE **" << std::endl;
+
+            std::ofstream out_grads;
+            if (comm().rank() == 0) {
+
+                out_grads.open("grads.txt", std::ofstream::out);
+                out_grads << std::setw(10) << "grads"
+                           << std::endl;
+                for (int di = 0; di < grads.size() ; di++)
+                    out_grads << std::setw(10) << grads[di]
+                               << std::endl;
+            }
+
+
         }
     }
 
