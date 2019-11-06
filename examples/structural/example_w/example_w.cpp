@@ -1035,14 +1035,12 @@ public:  // parametric constructor
             n_size[i] = _mesh->n_elem_on_proc(i);
         }
 
-            std::cout << "number of elems on proc " << 0 << " is  " << n_size[0] << std::endl;
-            std::cout << "number of elems on proc " << 1 << " is  " << n_size[1] << std::endl;
+          //  std::cout << "number of elems on proc " << 0 << " is  " << n_size[0] << std::endl;
+           // std::cout << "number of elems on proc " << 1 << " is  " << n_size[1] << std::endl;
         //       n[comm().rank()] = _mesh->n_local_elem();
         //     comm().sum(n);
 
-            std::vector<unsigned int> prev_elems((comm().size() ), 0);
-            int i = 0;
-
+        std::vector<unsigned int> prev_elems((comm().size() ), 0);
 
         if (comm().rank() != 0) {
             for (int j = 0; j < comm().rank() ; j++)
@@ -1051,13 +1049,14 @@ public:  // parametric constructor
 
         comm().sum(prev_elems);
 
-        for (int j =0 ; j < comm().size() ; j++)
-        std::cout << "prev elems on " << j << " is  " << prev_elems[j] << std::endl;
+       // for (int j =0 ; j < comm().size() ; j++)
+        //std::cout << "prev elems on " << j << " is  " << prev_elems[j] << std::endl;
 
         libMesh::MeshBase::const_element_iterator
                 e_it = _mesh->local_elements_begin(),
                 e_end = _mesh->local_elements_end();
 
+        int i = 0;
         for (; e_it != e_end; e_it++) {
             _outputs[ (i + prev_elems[comm().rank()]) ]->set_participating_elements({*e_it});
             _outputs[ (i + prev_elems[comm().rank()]) ]->set_aggregation_coefficients(_p_val, 1.0, _vm_rho, _stress_limit);
@@ -1065,6 +1064,10 @@ public:  // parametric constructor
             i += 1;
         }
 
+        if (_outputs.size() != _mesh->n_elem())
+            libMesh::out << "_outputs is not the correct size " << std::endl;
+
+            libmesh_assert_equal_to(_outputs.size(), _mesh->n_elem());
     }
     else{
         libMesh::MeshBase::const_element_iterator
@@ -1090,7 +1093,7 @@ public:  // parametric constructor
         // number of local elems in the mesh
 
         //libmesh_assert_equal_to(_outputs.size(), _mesh->n_elem());
-        libMesh::out << "loop exited"  << std::endl;
+        //libMesh::out << "loop exited"  << std::endl;
     }
     }
 
@@ -1137,7 +1140,8 @@ public:  // parametric constructor
         libMesh::Point pt; // dummy point object
 
         // print the values of all design variables
-        libMesh::out << "New Eval" << std::endl;
+        libMesh::out << "//////////////////////////////////////////////////////////////////////"<< std::endl
+                     << " New Eval " << std::endl;
         for (unsigned int i = 0; i < _n_vars; i++)
             libMesh::out
                     << "th     [ " << std::setw(10) << i << " ] = "
@@ -1147,7 +1151,7 @@ public:  // parametric constructor
                 if_write_output = true;
 
         //////////////////////////////////////////////////////////////////////
-        libMesh::out << "calculation of wheight " << std::endl;
+        libMesh::out << " calculation of wheight " << std::endl;
         // the optimization problem is defined as
         // min weight, subject to constraints on displacement and stresses
         Real
@@ -1160,11 +1164,11 @@ public:  // parametric constructor
         libMesh::out << " clear the solution " << std::endl;
         // first zero the solution
         _sys->solution->zero();
-        libMesh::out << "solution cleared" << std::endl;
+        libMesh::out << " solution cleared" << std::endl;
         //////////////////////////////////////////////////////////////////////
-        libMesh::out << "clear stress " << std::endl;
+        libMesh::out << " clear stress " << std::endl;
         this->clear_stresss();
-        libMesh::out << "stress cleared" << std::endl;
+        libMesh::out << " stress cleared" << std::endl;
         // solve for the steady state at zero velocity
         (*_velocity) = 0.;
 
@@ -1178,15 +1182,14 @@ public:  // parametric constructor
                                                          _n_load_steps);
 
         if (_if_vk) {
-            libMesh::out <<
-                         "//////////////////////////////////////////////////////////////////////" << std::endl;
             if (!_if_continuation_solver)
-                libMesh::out << "Steady state solution w/ Newton raphson solver " << std::endl;
+                libMesh::out << "** Steady state solution w/ Newton raphson solver **" << std::endl;
             else
-                libMesh::out << "Steady state solution w/ continuation solver " << std::endl;
-            libMesh::out <<
-                         "//////////////////////////////////////////////////////////////////////" << std::endl;
+                libMesh::out << "** Steady state solution w/ continuation solver **" << std::endl;
+        } else{
+            libMesh::out << "** Steady state solution w/ Newton raphson solver **" << std::endl;
         }
+
         steady_solve.solve();
         // use this solution as the base solution later if no flutter is found.
         libMesh::NumericVector<Real> &
@@ -1209,18 +1212,15 @@ public:  // parametric constructor
         // diagonal reduced order mass/stiffness operator. The eigenvalues
         // will also be independent of velocity.
 
-        libMesh::out <<
-                     "//////////////////////////////////////////////////////////////////////" << std::endl
-                    << "modal analysis " << std::endl
-                    << "//////////////////////////////////////////////////////////////////////" << std::endl;
+        libMesh::out << "** modal analysis **" << std::endl;
 
         _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
         _modal_assembly->set_base_solution(steady_sol_wo_aero);
         _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
         _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
-        //_modal_assembly->clear_base_solution();
-        //_modal_assembly->clear_discipline_and_system();
-        //_modal_elem_ops->clear_discipline_and_system();
+        _modal_assembly->clear_base_solution();
+        _modal_assembly->clear_discipline_and_system();
+        _modal_elem_ops->clear_discipline_and_system();
 
 
         unsigned int
@@ -1338,8 +1338,6 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
         if (if_write_output) {
 
-
-
             _stress_elem->set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
             _stress_elem->set_participating_elements_to_all();
             _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
@@ -1375,14 +1373,10 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
 
         _nonlinear_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
-        for (int i=0; i < _outputs.size(); i++){
+        for (int i=0; i < _mesh->n_elem() ; i++){
             _nonlinear_assembly->calculate_output(*_sys->solution,*_outputs[i]);
         }
         _nonlinear_assembly->clear_discipline_and_system();
-
-
-
-
 
 
         //////////////////////////////////////////////////////////////////////
@@ -1446,11 +1440,11 @@ public:  // parametric constructor
         // evaluate the flutter constraint
         //////////////////////////////////////////////////////////////////////
 
-        if (!if_all_eig_positive)
-            fvals[_n_eig+0]  =  100.;
-        else if (sol.second)
-            fvals[_n_eig+0]  =  _V0_flutter/sol.second->V - 1.;
-        else
+//        if (!if_all_eig_positive)
+//            fvals[_n_eig+0]  =  100.;
+//        else if (sol.second)
+//            fvals[_n_eig+0]  =  _V0_flutter/sol.second->V - 1.;
+//        else
             fvals[_n_eig+0]  =  -100.;
 
 
@@ -1488,16 +1482,9 @@ public:  // parametric constructor
             if_sens = (if_sens || eval_grads[i]);
 
 
-
-        libMesh::out <<
-                     "//////////////////////////////////////////////////////////////////////" << std::endl
-                     << "Sensitivity analysis " << std::endl
-                     << "//////////////////////////////////////////////////////////////////////" << std::endl;
-
-        //if_sens = false; //
-
         if (if_sens) {
 
+            libMesh::out << "** Sensitivity analysis **" << std::endl;
             // first initialize the gradient vector to zero
             std::fill(grads.begin(), grads.end(), 0.);
 
@@ -1506,8 +1493,8 @@ public:  // parametric constructor
             // grad_k = dfi/dxj  ,  where k = j*NFunc + i
             //////////////////////////////////////////////////////////////////
 
-            std::vector<std::pair<unsigned int, MAST::Parameter*>> params;
-            params.resize(1);
+            //std::vector<std::pair<unsigned int, MAST::Parameter*>> params;
+            //params.resize(1);
 
             //MAST::Parameter* params;
 
@@ -1524,10 +1511,7 @@ public:  // parametric constructor
 
             if (sol.second) {
 
-                params[0].second = _velocity;
-
-
-
+                //params[0].second = _velocity;
 
                 _nonlinear_assembly->set_discipline_and_system(*_discipline,
                                                                *_structural_sys);
@@ -1536,9 +1520,8 @@ public:  // parametric constructor
 
                 _sys->sensitivity_solve(*_nonlinear_elem_ops,
                                         *_nonlinear_assembly,
-                                        *params[0].second,
+                                        *_velocity,
                                         false);
-
 
                 dXdV = _sys->get_sensitivity_solution(0);
 
@@ -1551,43 +1534,45 @@ public:  // parametric constructor
                 for (int i=0; i < _outputs.size(); i++) {
                     _nonlinear_assembly->calculate_output_direct_sensitivity(*(_sys->solution),
                                                                              &dxdp,
-                                                                             *params[0].second,
+                                                                             *_velocity,
                                                                              *_outputs[i]);
                 }
                 for (unsigned int j = 0; j < _outputs.size(); j++)
-                    dsigma_dV[j] = _outputs[j]->output_sensitivity_total(*params[0].second);
+                    dsigma_dV[j] = _outputs[j]->output_sensitivity_total(*_velocity);
                             //von_Mises_p_norm_functional_sensitivity_for_all_elems
                             //(pval, _velocity);
 
                 _nonlinear_assembly->clear_discipline_and_system();
-            } else
-
+            }
+            else {
                 dXdV.zero();
+            }
 
+
+            // copy the solution to be used for sensitivity
+            // If a flutter solution was found, then this depends on velocity.
+            // Otherwise, it is independent of velocity
+            *_sys->solution = steady_solve.solution();
+
+            _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
+            _modal_assembly->set_base_solution(*_sys->solution);
+            _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
+            _nonlinear_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+            _nonlinear_elem_ops->set_discipline_and_system(*_discipline,*_structural_sys);
 
             // we are going to choose to use one parametric sensitivity at a time
             for (unsigned int i = 0; i < _n_vars; i++) {
-
                 libMesh::out << "design variable " << i << std::endl;
 
-                    params[0].second = _problem_parameters[i];
+                //params[0].second = _problem_parameters[i];
 
-                // copy the solution to be used for sensitivity
-                // If a flutter solution was found, then this depends on velocity.
-                // Otherwise, it is independent of velocity
-                *_sys->solution = steady_solve.solution();
+
 
                 // iterate over each dv and calculate the sensitivity
                 libMesh::NumericVector<Real> &dXdp = _sys->add_sensitivity_solution(0);
                 dXdp.zero();
 
-
                 // sensitivity analysis
-                _nonlinear_assembly->set_discipline_and_system(*_discipline,
-                                                               *_structural_sys);
-                _nonlinear_elem_ops->set_discipline_and_system(*_discipline,
-                                                               *_structural_sys);
-
                 _sys->sensitivity_solve(*_nonlinear_elem_ops,
                                         *_nonlinear_assembly,
                                         *_problem_parameters[i],
@@ -1595,17 +1580,13 @@ public:  // parametric constructor
 
                 dXdp = _sys->get_sensitivity_solution(0);
 
-                for (unsigned int j = 0 ; j < _outputs.size(); j++){
+                for (unsigned int j = 0 ; j < _mesh->n_elem(); j++){
                     // evaluate sensitivity of the outputs
-
                     _nonlinear_assembly->calculate_output_direct_sensitivity(*(_sys->solution),
                                                                              &dXdp,
                                                                              *_problem_parameters[i],
                                                                              *_outputs[j]  );
                 }
-
-                _nonlinear_assembly->clear_discipline_and_system();
-                _nonlinear_elem_ops->clear_discipline_and_system();
 
                 // copy the sensitivity values in the output. This accounts for the
                 // sensitivity of state wrt parameter. However, if a flutter root
@@ -1613,12 +1594,17 @@ public:  // parametric constructor
                 // parameter. Hence, the total sensitivity of stress constraint
                 // would need to include the latter component, which was added
                 // above.
-                for (unsigned int j = 0; j < _outputs.size(); j++)
+                for (unsigned int j = 0; j < _mesh->n_elem(); j++) {
                     grads[(i * _n_ineq) + (j + _n_eig + 1 + my_id0)] = _dv_scaling[i] / _stress_limit *
-                                                                       _outputs[j]->output_sensitivity_total(*_problem_parameters[i]);
+                                                                       _outputs[j]->output_sensitivity_total(
+                                                                               *_problem_parameters[i]);
+                }
 
-                                                                               //von_Mises_p_norm_functional_sensitivity_for_all_elems
-                                                                               //(_p_val, _problem_parameters[i]);
+                // now, sum the sensitivity of the stress function gradients
+                // so that all processors have the same values
+                for (unsigned int j = 0; j < _mesh->n_elem(); j++)
+                    this->comm().sum(grads[(i * _n_ineq) + (j + _n_eig + 1)]);
+
 
                 // if all eigenvalues are positive, calculate at the sensitivity of
                 // flutter velocity
@@ -1674,19 +1660,15 @@ public:  // parametric constructor
 
                     _nonlinear_assembly->clear_discipline_and_system();
                     _nonlinear_elem_ops->clear_discipline_and_system();
-                } else
+                } else {
                     // if no root was found, then set the sensitivity to a zero value
                     grads[(i * _n_ineq) + (_n_eig + 0)] = 0.;
-
-
-                // now, sum the sensitivity of the stress function gradients
-                // so that all processors have the same values
-                for (unsigned int j = 0; j < _n_elems; j++)
-                    this->comm().sum(grads[(i * _n_ineq) + (j + _n_eig + 1)]);
+                }
 
 
                 // calculate the sensitivity of the eigenvalues
                 std::vector<Real> eig_sens(nconv);
+
 
                 _modal_assembly->set_base_solution(dXdp, true);
                 _sys->eigenproblem_sensitivity_solve( *_modal_elem_ops,
@@ -1700,14 +1682,16 @@ public:  // parametric constructor
                 for (unsigned int j = 0; j < nconv; j++) {
                     grads[(i * _n_ineq) + j] = -_dv_scaling[i] * eig_sens[j] / 1.e7;
                 }
-
             }
+
+            _nonlinear_assembly->clear_discipline_and_system();
+            _nonlinear_elem_ops->clear_discipline_and_system();
+            _modal_assembly->clear_discipline_and_system();
+            _modal_assembly->clear_base_solution();
+            _modal_elem_ops->clear_discipline_and_system();
+
+            libMesh::out << "** sensitivity analysis DONE **" << std::endl;
         }
-
-
-        _modal_assembly->clear_discipline_and_system();
-        _modal_assembly->clear_base_solution();
-        _modal_elem_ops->clear_discipline_and_system();
     }
 
     void clear_stresss() {
@@ -1745,6 +1729,7 @@ public:  // parametric constructor
         _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
         _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
 
+        libMesh::out << "Writing output to : output.exo" << std::endl;
         libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
                                                             *_eq_sys);
 
@@ -2172,8 +2157,8 @@ int main(int argc, char* argv[]) {
     // create and attach sizing optimization object
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization func_eval(init.comm(), _input);
 
-    //if (__init->comm().rank() == 0)
-      //  func_eval.set_output_file("optimization_output.txt");
+    if (init.comm().rank() == 0)
+        func_eval.set_output_file("optimization_output.txt");
 
     __my_func_eval = &func_eval;
 
