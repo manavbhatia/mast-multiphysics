@@ -270,6 +270,7 @@ protected:      // protected member variables
     MAST::StressStrainOutputBase*               _stress_elem;
     // output quantity objects to evaluate stress
     std::vector<MAST::StressStrainOutputBase *> _outputs;
+    bool _if_neg_eig;
 public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
                                                                   MAST::Examples::GetPotWrapper& input) :
@@ -331,7 +332,8 @@ public:  // parametric constructor
             _velocity_f(nullptr),
             _p_val(0.),
             _vm_rho(0.),
-            _if_continuation_solver(false)
+            _if_continuation_solver(false),
+            _if_neg_eig(false)
 
 //        _thy_station_vals(nullptr),
 //        _thz_station_vals(nullptr)
@@ -730,37 +732,37 @@ public:  // parametric constructor
 
         _problem_parameters.resize(_n_vars);
 
-        RealVectorX specific = RealVectorX::Zero(_n_vars);
-
-
-
-        specific     (         0 ) =    0.001376248159470;
-        specific     (         1 ) =    0.001633035168052;
-        specific     (         2 ) =    0.001358939868428;
-        specific     (         3 ) =    0.004823157262727;
-        specific     (         4 ) =    0.004536691125006;
-        specific     (         5 ) =    0.004827210371812;
-        specific     (         6 ) =    0.004581957907045;
-        specific     (         7 ) =    0.004241360828747;
-        specific     (         8 ) =    0.004585925059885;
-        specific     (         9 ) =    0.004797765394823;
-        specific     (         10 ) =    0.004458738439156;
-        specific     (         11 ) =    0.004695802132143;
-        specific     (         12 ) =    0.004623569600505;
-        specific     (         13 ) =    0.004290883434655;
-        specific     (         14 ) =    0.004566613834640;
-        specific     (         15 ) =    0.004894128551505;
-        specific     (         16 ) =    0.004535975896130;
-        specific     (         17 ) =    0.004890035637680;
-        specific     (         18 ) =    0.004615723356328;
-        specific     (         19 ) =    0.004239205346027;
-        specific     (         20 ) =    0.004615025078462;
+//        RealVectorX specific = RealVectorX::Zero(_n_vars);
+//
+//
+//
+//        specific     (         0 ) =    0.001376248159470;
+//        specific     (         1 ) =    0.001633035168052;
+//        specific     (         2 ) =    0.001358939868428;
+//        specific     (         3 ) =    0.004823157262727;
+//        specific     (         4 ) =    0.004536691125006;
+//        specific     (         5 ) =    0.004827210371812;
+//        specific     (         6 ) =    0.004581957907045;
+//        specific     (         7 ) =    0.004241360828747;
+//        specific     (         8 ) =    0.004585925059885;
+//        specific     (         9 ) =    0.004797765394823;
+//        specific     (         10 ) =    0.004458738439156;
+//        specific     (         11 ) =    0.004695802132143;
+//        specific     (         12 ) =    0.004623569600505;
+//        specific     (         13 ) =    0.004290883434655;
+//        specific     (         14 ) =    0.004566613834640;
+//        specific     (         15 ) =    0.004894128551505;
+//        specific     (         16 ) =    0.004535975896130;
+//        specific     (         17 ) =    0.004890035637680;
+//        specific     (         18 ) =    0.004615723356328;
+//        specific     (         19 ) =    0.004239205346027;
+//        specific     (         20 ) =    0.004615025078462;
 
         // design variables for the thickness values
         for (unsigned int i = 0; i < _n_vars; i++) {
 
-            //_dv_init[i] = _input("dv_init", "", th / th_u, i);
-            _dv_init[i] = _input("dv_init", "", specific(i) / th_u, i);
+            _dv_init[i] = _input("dv_init", "", th / th_u, i);
+//            _dv_init[i] = _input("dv_init", "", specific(i) / th_u, i);
             _dv_low[i] = th_l / th_u;
             _dv_scaling[i] = th_u;
         }
@@ -955,7 +957,8 @@ public:  // parametric constructor
             // tell the section property about the material property
             _p_card_stiff[i]->set_material(*_m_card);
 
-            _p_card_stiff[i]->set_bending_model(MAST::TIMOSHENKO);
+            //_p_card_stiff[i]->set_bending_model(MAST::TIMOSHENKO);
+            //_p_card_stiff[i]->set_bending_model(MAST::BERNOULLI);
 
             if (_if_vk) _p_card_stiff[i]->set_strain(MAST::NONLINEAR_STRAIN);
 
@@ -1182,8 +1185,10 @@ public:  // parametric constructor
                                                          _n_load_steps);
 
         if (_if_vk) {
-            if (!_if_continuation_solver)
+            if (!_if_continuation_solver) {
                 libMesh::out << "** Steady state solution w/ Newton raphson solver **" << std::endl;
+                _if_neg_eig = false;
+            }
             else
                 libMesh::out << "** Steady state solution w/ continuation solver **" << std::endl;
         } else{
@@ -1203,6 +1208,12 @@ public:  // parametric constructor
         steady_solve.set_n_load_steps(50);
         steady_solve.set_modify_only_aero_load(true);
 
+        if (_if_neg_eig) {
+            obj = 1.e10;
+            for (unsigned int i=0; i<_n_ineq; i++)
+                fvals[i] = 1.e10;
+            return;
+        }
 
         //////////////////////////////////////////////////////////////////////
         // perform the modal analysis
@@ -2079,7 +2090,9 @@ public:  // parametric constructor
                                     << std::setw(25) << vec1[0] << std::endl;
                         }
 
-                        if (i%2== 0){
+                        std::vector<Real> eig_vec(_obj._n_eig, 0);
+                        if (true //i%2== 0
+                                ){
                             _obj._modal_assembly->set_base_solution(*_obj._sys->solution);
                             _obj._sys->eigenproblem_solve( *_obj._modal_elem_ops, *_obj._modal_assembly);
                             unsigned int
@@ -2094,12 +2107,14 @@ public:  // parametric constructor
                             }
 
 
+
                             for (int dj =0 ; dj < nconv; dj++){
                                 // now write the eigenvalue
                                 Real
                                         re = 0.,
                                         im = 0.;
                                 _obj._sys->get_eigenvalue(dj, re, im);
+                                eig_vec[dj] = re;
 
                                 if (_obj.comm().rank() == 0) {
                                     out_eig  << std::setw(25) << re  ;
@@ -2123,6 +2138,10 @@ public:  // parametric constructor
                                                  i+1,
                                                _obj._sys->time);
 
+                        if ( eig_vec[0] < 0.0 ) {
+                            _obj._if_neg_eig = true;
+                            break;
+                        }
 
 
                         if ((*_obj._temp)() > max_temp) {
