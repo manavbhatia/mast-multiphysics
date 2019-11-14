@@ -2064,7 +2064,8 @@ public:  // parametric constructor
                         writer->write_timestep("sol_continuation_solver.exo",
                                                *_obj._eq_sys,
                                                  i+1,
-                                               _obj._sys->time);
+                                                 i);//,
+                                              // _obj._sys->time);
 
 
                         // if a negative eigenvalue is detected
