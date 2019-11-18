@@ -1981,7 +1981,12 @@ public:  // parametric constructor
                     solver.schur_factorization = _obj._input("if_schur_factorization", "use Schur-factorization in continuation solver", true);
                     solver.min_step            = _obj._input("min_step", "minimum arc-length step-size for continuation solver",          10.);
                     solver.max_it              = _obj._input("max_it", "max nr iterations",          10);
-                    // specify temperature as the load parameter to be changed per
+                    solver.max_step            = _obj._input("max_step", "maximum arc-length step-size for continuation solver",   20.);
+                    solver.step_desired_iters  = _obj._input("step_desired_iters", "maximum arc-length step-size for continuation solver",5);
+
+
+
+                            // specify temperature as the load parameter to be changed per
                     // load step
                     solver.set_assembly_and_load_parameter(*_obj._nonlinear_elem_ops,
                                                            *_obj._nonlinear_assembly,
