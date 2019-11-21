@@ -732,37 +732,10 @@ public:  // parametric constructor
 
         _problem_parameters.resize(_n_vars);
 
-//        RealVectorX specific = RealVectorX::Zero(_n_vars);
-//
-//
-//
-//        specific     (         0 ) =    0.001376248159470;
-//        specific     (         1 ) =    0.001633035168052;
-//        specific     (         2 ) =    0.001358939868428;
-//        specific     (         3 ) =    0.004823157262727;
-//        specific     (         4 ) =    0.004536691125006;
-//        specific     (         5 ) =    0.004827210371812;
-//        specific     (         6 ) =    0.004581957907045;
-//        specific     (         7 ) =    0.004241360828747;
-//        specific     (         8 ) =    0.004585925059885;
-//        specific     (         9 ) =    0.004797765394823;
-//        specific     (         10 ) =    0.004458738439156;
-//        specific     (         11 ) =    0.004695802132143;
-//        specific     (         12 ) =    0.004623569600505;
-//        specific     (         13 ) =    0.004290883434655;
-//        specific     (         14 ) =    0.004566613834640;
-//        specific     (         15 ) =    0.004894128551505;
-//        specific     (         16 ) =    0.004535975896130;
-//        specific     (         17 ) =    0.004890035637680;
-//        specific     (         18 ) =    0.004615723356328;
-//        specific     (         19 ) =    0.004239205346027;
-//        specific     (         20 ) =    0.004615025078462;
-
         // design variables for the thickness values
         for (unsigned int i = 0; i < _n_vars; i++) {
 
             _dv_init[i] = _input("dv_init", "", th / th_u, i);
-//            _dv_init[i] = _input("dv_init", "", specific(i) / th_u, i);
             _dv_low[i] = th_l / th_u;
             _dv_scaling[i] = th_u;
         }
@@ -1105,10 +1078,31 @@ public:  // parametric constructor
                            std::vector<Real>& xmax) {
 
         // one DV for each element
-        x       = _dv_init;
-        xmin    = _dv_low;
-        xmax.resize(_n_vars);
-        std::fill(xmax.begin(), xmax.end(), 1.);
+
+       x.resize(_n_vars);
+       xmin.resize(_n_vars);
+       xmax.resize(_n_vars);
+
+       xmin    = _dv_low;
+       xmax    = _dv_scaling;
+
+        //
+        // now, check if the user asked to initialize dvs from a previous file
+        //
+        std::string
+                nm    =  _input("restart_optimization_file", "filename with optimization history for restart", "");
+
+        if (nm.length()) {
+
+            unsigned int
+                    iter = _input("restart_optimization_iter", "restart iteration number from file", 0);
+            this->initialize_dv_from_output_file(nm, iter, x);
+
+            libmesh_assert_equal_to(x.size(),_n_vars);
+        }
+        else {
+                x       = _dv_init;
+        }
     }
 
     virtual void evaluate(const std::vector<Real> &dvars,
