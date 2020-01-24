@@ -1,4 +1,11 @@
 
+/*
+ * the objective of this code is to design a stiffened panel, thermally stressed that would avoid static instability.
+ * First bifurcation is a static instability and we want to design the panel such that it does not get to it.
+ * The thermal load is applied uniformly accross the panel.
+ * Von Karman strain is used for the calculation of strain.
+ */
+
 // C++ includes
 #include <memory>
 #include <iomanip>
@@ -1179,7 +1186,9 @@ public:  // parametric constructor
         }
 
         steady_solve.solve();
-        // use this solution as the base solution later if no flutter is found.
+
+        libmesh_error();
+        // us this solution as the base solution later if no flutter is found.
         libMesh::NumericVector<Real> &
                 steady_sol_wo_aero = _sys->add_vector("steady_sol_wo_aero");
         steady_sol_wo_aero = *_sys->solution;
@@ -1496,7 +1505,7 @@ public:  // parametric constructor
             std::vector<Real> dsigma_dV(_outputs.size(), 0.);
 
             if (sol.second) {
-
+                libmesh_error();
                 //params[0].second = _velocity;
 
                 _nonlinear_assembly->set_discipline_and_system(*_discipline,
@@ -1583,11 +1592,14 @@ public:  // parametric constructor
                 // first block not used no flutter solution
 
                 if (if_all_eig_positive && sol.second) {
+                    libmesh_error();
+
                     //
                     //           g = V0/Vf - 1 <= 0
                     //   Hence, sensitivity is
                     //   -V0/Vf^2  dVf
                     //
+                    libmesh_error();
                     _fsi_assembly->set_base_solution(steady_solve.solution());
                     _fsi_assembly->set_base_solution(dXdp, true);
                     _fsi_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
@@ -1788,13 +1800,15 @@ public:  // parametric constructor
         virtual const libMesh::NumericVector<Real>&
         solve() {
 
+            // create a vector to store the solution
             libMesh::NumericVector<Real>& sol = _obj._sys->get_vector("base_solution");
             *_obj._sys->solution = sol;
 
-            // now do the solve
+
             libmesh_assert(_obj._initialized);
 
-            bool if_vk = (_obj._p_card_plate->strain_type() == MAST::NONLINEAR_STRAIN);
+            // check if the system solved is linear or nonlinear
+            bool if_vk = _obj._if_vk;
 
             ///////////////////////////////////////////////////////////////
             // first, solve the quasi-steady problem
@@ -1922,7 +1936,7 @@ public:  // parametric constructor
                     }
                 }
 
-                std::cout << *nd << std::endl;
+                // std::cout << *nd << std::endl;
 
                 Real
                         max_temp = (*_obj._temp)(),
@@ -1980,7 +1994,7 @@ public:  // parametric constructor
 
 
 
-                            // specify temperature as the load parameter to be changed per
+                    // specify temperature as the load parameter to be changed per
                     // load step
                     solver.set_assembly_and_load_parameter(*_obj._nonlinear_elem_ops,
                                                            *_obj._nonlinear_assembly,
@@ -2003,6 +2017,7 @@ public:  // parametric constructor
                                 << "  iter: " << i
                                 << "  temperature: " << (*_obj._temp)()
                                 << "  pressure: "    << (*_obj._p_cav)() << std::endl;
+
 
                         // get the value of the node at the center of the plate for output
                         _obj._sys->solution->localize(vec1, vec2);
@@ -2063,7 +2078,7 @@ public:  // parametric constructor
                         writer->write_timestep("sol_continuation_solver.exo",
                                                *_obj._eq_sys,
                                                  i+1,
-                                                 i);//,
+                                                 i+1);//,
                                               // _obj._sys->time);
 
 
@@ -2072,8 +2087,9 @@ public:  // parametric constructor
                         // and solve the system one last time and exit
                         if ( eig_vec[0] < 0.0 ) {
                             _obj._if_neg_eig = true;
-                            _obj._sys->solve(*_obj._nonlinear_elem_ops,
-                                             *_obj._nonlinear_assembly);
+                            libMesh::out << " negative eigenvalue found" << std::endl;
+                           // _obj._sys->solve(*_obj._nonlinear_elem_ops,
+                           //                  *_obj._nonlinear_assembly);
                             break;
                         }
 
@@ -2209,121 +2225,121 @@ int main(int argc, char* argv[]) {
 
 
 
-void
-stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj(int*    mode,
-                                                                   int*    n,
-                                                                   double* x,
-                                                                   double* f,
-                                                                   double* g,
-                                                                   int*    nstate) {
-
-
-    // make sure that the global variable has been setup
-    libmesh_assert(__my_func_eval);
-
-    // initialize the local variables
-    Real
-            obj = 0.;
-
-    unsigned int
-            n_vars  =  __my_func_eval->n_vars(),
-            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
-
-    libmesh_assert_equal_to(*n, n_vars);
-
-    std::vector<Real>
-            dvars   (*n,    0.),
-            obj_grad(*n,    0.),
-            fvals   (n_con, 0.),
-            grads   (0);
-
-    std::vector<bool>
-            eval_grads(n_con);
-    std::fill(eval_grads.begin(), eval_grads.end(), false);
-
-    // copy the dvars
-    for (unsigned int i=0; i<n_vars; i++)
-        dvars[i] = x[i];
-
-
-    __my_func_eval->evaluate(dvars,
-                             obj,
-                             true,       // request the derivatives of obj
-                             obj_grad,
-                             fvals,
-                             eval_grads,
-                             grads);
-
-
-    // now copy them back as necessary
-    *f  = obj;
-    for (unsigned int i=0; i<n_vars; i++)
-        g[i] = obj_grad[i];
-}
-
-
-void
-stiffened_plate_thermally_stressed_piston_theory_flutter_optim_con(int*    mode,
-                                                                   int*    ncnln,
-                                                                   int*    n,
-                                                                   int*    ldJ,
-                                                                   int*    needc,
-                                                                   double* x,
-                                                                   double* c,
-                                                                   double* cJac,
-                                                                   int*    nstate) {
-
-
-    // make sure that the global variable has been setup
-    libmesh_assert(__my_func_eval);
-
-    // initialize the local variables
-    Real
-            obj = 0.;
-
-    unsigned int
-            n_vars  =  __my_func_eval->n_vars(),
-            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
-
-    libmesh_assert_equal_to(    *n, n_vars);
-    libmesh_assert_equal_to(*ncnln, n_con);
-
-    std::vector<Real>
-            dvars   (*n,    0.),
-            obj_grad(*n,    0.),
-            fvals   (n_con, 0.),
-            grads   (n_vars*n_con, 0.);
-
-    std::vector<bool>
-            eval_grads(n_con);
-    std::fill(eval_grads.begin(), eval_grads.end(), true);
-
-    // copy the dvars
-    for (unsigned int i=0; i<n_vars; i++)
-        dvars[i] = x[i];
-
-
-    __my_func_eval->evaluate(dvars,
-                             obj,
-                             true,       // request the derivatives of obj
-                             obj_grad,
-                             fvals,
-                             eval_grads,
-                             grads);
-
-
-    // now copy them back as necessary
-
-    // first the constraint functions
-    for (unsigned int i=0; i<n_con; i++)
-        c[i] = fvals[i];
-
-    // next, the constraint gradients
-    for (unsigned int i=0; i<n_con*n_vars; i++)
-        cJac[i] = grads[i];
-
-
-}
+//void
+//stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj(int*    mode,
+//                                                                   int*    n,
+//                                                                   double* x,
+//                                                                   double* f,
+//                                                                   double* g,
+//                                                                   int*    nstate) {
+//
+//
+//    // make sure that the global variable has been setup
+//    libmesh_assert(__my_func_eval);
+//
+//    // initialize the local variables
+//    Real
+//            obj = 0.;
+//
+//    unsigned int
+//            n_vars  =  __my_func_eval->n_vars(),
+//            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
+//
+//    libmesh_assert_equal_to(*n, n_vars);
+//
+//    std::vector<Real>
+//            dvars   (*n,    0.),
+//            obj_grad(*n,    0.),
+//            fvals   (n_con, 0.),
+//            grads   (0);
+//
+//    std::vector<bool>
+//            eval_grads(n_con);
+//    std::fill(eval_grads.begin(), eval_grads.end(), false);
+//
+//    // copy the dvars
+//    for (unsigned int i=0; i<n_vars; i++)
+//        dvars[i] = x[i];
+//
+//
+//    __my_func_eval->evaluate(dvars,
+//                             obj,
+//                             true,       // request the derivatives of obj
+//                             obj_grad,
+//                             fvals,
+//                             eval_grads,
+//                             grads);
+//
+//
+//    // now copy them back as necessary
+//    *f  = obj;
+//    for (unsigned int i=0; i<n_vars; i++)
+//        g[i] = obj_grad[i];
+//}
+//
+//
+//void
+//stiffened_plate_thermally_stressed_piston_theory_flutter_optim_con(int*    mode,
+//                                                                   int*    ncnln,
+//                                                                   int*    n,
+//                                                                   int*    ldJ,
+//                                                                   int*    needc,
+//                                                                   double* x,
+//                                                                   double* c,
+//                                                                   double* cJac,
+//                                                                   int*    nstate) {
+//
+//
+//    // make sure that the global variable has been setup
+//    libmesh_assert(__my_func_eval);
+//
+//    // initialize the local variables
+//    Real
+//            obj = 0.;
+//
+//    unsigned int
+//            n_vars  =  __my_func_eval->n_vars(),
+//            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
+//
+//    libmesh_assert_equal_to(    *n, n_vars);
+//    libmesh_assert_equal_to(*ncnln, n_con);
+//
+//    std::vector<Real>
+//            dvars   (*n,    0.),
+//            obj_grad(*n,    0.),
+//            fvals   (n_con, 0.),
+//            grads   (n_vars*n_con, 0.);
+//
+//    std::vector<bool>
+//            eval_grads(n_con);
+//    std::fill(eval_grads.begin(), eval_grads.end(), true);
+//
+//    // copy the dvars
+//    for (unsigned int i=0; i<n_vars; i++)
+//        dvars[i] = x[i];
+//
+//
+//    __my_func_eval->evaluate(dvars,
+//                             obj,
+//                             true,       // request the derivatives of obj
+//                             obj_grad,
+//                             fvals,
+//                             eval_grads,
+//                             grads);
+//
+//
+//    // now copy them back as necessary
+//
+//    // first the constraint functions
+//    for (unsigned int i=0; i<n_con; i++)
+//        c[i] = fvals[i];
+//
+//    // next, the constraint gradients
+//    for (unsigned int i=0; i<n_con*n_vars; i++)
+//        cJac[i] = grads[i];
+//
+//
+//}
 
 
 
