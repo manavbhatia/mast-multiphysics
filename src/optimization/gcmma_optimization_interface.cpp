@@ -276,16 +276,23 @@ MAST::GCMMAOptimizationInterface::optimize() {
             Real frac = 0.02;
             while (FNEW[0] > 1.e2) {
                 libMesh::out << "*** Backtracking: frac = "
-                << frac
-                << "  constr: " << FNEW[0]
-                << std::endl;
-                for (unsigned int i=0; i<XMMA.size(); i++)
-                    XMMA_new[i] = XOLD1[i] + frac*(XMMA[i]-XOLD1[i]);
-                
+                             << frac
+                             << "  constr: " << FNEW[0]
+                             << std::endl;
+                for (unsigned int i = 0; i < XMMA.size(); i++)
+                    XMMA_new[i] = XOLD1[i] + frac * (XMMA[i] - XOLD1[i]);
+
                 _feval->_evaluate_wrapper(XMMA_new,
                                           F0NEW, false, DF0DX,
                                           FNEW, eval_grads, DFDX);
-                frac *= frac;
+                if (frac > 1.e-16){
+                    frac *= frac;
+                }
+                else{
+                frac = 0.;
+                    libMesh::out << "*** frac = 0, re-use design variables "
+                                 << std::endl;
+                }
             }
             for (unsigned int i=0; i<XMMA.size(); i++)
                 XMMA[i] = XMMA_new[i];

@@ -1112,13 +1112,13 @@ public:  // parametric constructor
         }
     }
 
-    virtual void evaluate(const std::vector<Real> &dvars,
-                          Real &obj,
-                          bool eval_obj_grad,
-                          std::vector<Real> &obj_grad,
-                          std::vector<Real> &fvals,
-                          std::vector<bool> &eval_grads,
-                          std::vector<Real> &grads) {
+    virtual void evaluate(const std::vector<Real> &dvars, // design variable
+                          Real &obj,                      // objective function
+                          bool eval_obj_grad,             // flag to evaluate or not grad of obj func
+                          std::vector<Real> &obj_grad,    // the gradient of the obj func
+                          std::vector<Real> &fvals,       // constraint functions
+                          std::vector<bool> &eval_grads,  // vector of flags to evaluate gradient of constraint func
+                          std::vector<Real> &grads) {     // gradients of constraint functions
 
         libmesh_assert(_initialized);
         libmesh_assert_equal_to(dvars.size(), _n_vars);
@@ -1187,7 +1187,8 @@ public:  // parametric constructor
 
         steady_solve.solve();
 
-        libmesh_error();
+//        libmesh_error();
+
         // us this solution as the base solution later if no flutter is found.
         libMesh::NumericVector<Real> &
                 steady_sol_wo_aero = _sys->add_vector("steady_sol_wo_aero");
@@ -1973,7 +1974,7 @@ public:  // parametric constructor
                             << std::setw(25) << "pressure";
 
                     for (int di = 0; di < _obj._n_eig; di++)
-                        out_eig  << std::setw(25) << "Re of eigenvalue" << di+1;
+                        out_eig  << std::setw(25) << "Re_of_eigenvalue" << di+1;
 
                     out_eig << std::endl;
                 }
@@ -2085,7 +2086,7 @@ public:  // parametric constructor
                         // if a negative eigenvalue is detected
                         // change flag to true to increase obj and fvals
                         // and solve the system one last time and exit
-                        if ( eig_vec[0] < 0.0 ) {
+                        if ( (eig_vec[0] < 0.0) && ( (*_obj._temp)() < max_temp) )  {
                             _obj._if_neg_eig = true;
                             libMesh::out << " negative eigenvalue found" << std::endl;
                            // _obj._sys->solve(*_obj._nonlinear_elem_ops,
