@@ -747,6 +747,29 @@ public:  // parametric constructor
             _dv_scaling[i] = th_u;
         }
 
+//        _dv_init     [          0 ] =    0.000756353417639/ th_u;
+//        _dv_init     [          1 ] =    0.001289105172330/ th_u;
+//        _dv_init     [          2 ] =    0.000758136764126/ th_u;
+//        _dv_init     [          3 ] =    0.004738767647553/ th_u;
+//        _dv_init     [          4 ] =    0.004366339759017/ th_u;
+//        _dv_init     [          5 ] =    0.004744810158320/ th_u;
+//        _dv_init     [          6 ] =    0.004492514256054/ th_u;
+//        _dv_init     [          7 ] =    0.004059037082863/ th_u;
+//        _dv_init     [          8 ] =    0.004498139875795/ th_u;
+//        _dv_init     [          9 ] =    0.004716538972727/ th_u;
+//        _dv_init     [         10 ] =    0.004286691718592/ th_u;
+//        _dv_init     [         11 ] =    0.004616035180759/ th_u;
+//        _dv_init     [         12 ] =    0.004543729599818/ th_u;
+//        _dv_init     [         13 ] =    0.004123091251211/ th_u;
+//        _dv_init     [         14 ] =    0.004488817534016/ th_u;
+//        _dv_init     [         15 ] =    0.004809972841285/ th_u;
+//        _dv_init     [         16 ] =    0.004365452325321/ th_u;
+//        _dv_init     [         17 ] =    0.004807931915246/ th_u;
+//        _dv_init     [         18 ] =    0.004526012717207/ th_u;
+//        _dv_init     [         19 ] =    0.004056541442243/ th_u;
+//        _dv_init     [         20 ] =    0.004527049343407/ th_u;
+
+
     }
 
     void _init_thickness_variables(){
@@ -1179,8 +1202,10 @@ public:  // parametric constructor
                 libMesh::out << "** Steady state solution w/ Newton raphson solver **" << std::endl;
                 _if_neg_eig = false;
             }
-            else
+            else {
                 libMesh::out << "** Steady state solution w/ continuation solver **" << std::endl;
+                _if_neg_eig = false;
+            }
         } else{
             libMesh::out << "** Steady state solution w/ Newton raphson solver **" << std::endl;
         }
@@ -1222,6 +1247,7 @@ public:  // parametric constructor
         _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
         _modal_assembly->set_base_solution(steady_sol_wo_aero);
         _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
+        _sys->eigen_solver->set_position_of_spectrum( libMesh::LARGEST_MAGNITUDE);
         _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
         _modal_assembly->clear_base_solution();
         _modal_assembly->clear_discipline_and_system();
@@ -1285,6 +1311,30 @@ public:  // parametric constructor
                                        i);    //  time
             }
         }
+
+//        // solving the eig problem using smallest mag to obtain negative eigvalues
+//
+//        _sys->eigen_solver->set_position_of_spectrum( libMesh::SMALLEST_REAL );
+//        _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
+//
+//        unsigned int
+//                nconv_1 = std::min(_sys->get_n_converged_eigenvalues(),
+//                                   _sys->get_n_requested_eigenvalues());
+//        // vector of eigenvalues
+//        std::vector<Real> eig_vals_1(nconv_1);
+//
+//        for (unsigned int i = 0; i < nconv_1; i++) {
+//            // now write the eigenvalue
+//            Real
+//                    re = 0.,
+//                    im = 0.;
+//            _sys->get_eigenvalue(i, re, im);
+//
+//            eig_vals_1[i] = re;
+//        }
+//        _modal_assembly->clear_base_solution();
+//        _modal_assembly->clear_discipline_and_system();
+//        _modal_elem_ops->clear_discipline_and_system();
 
 
         //////////////////////////////////////////////////////////////////////
