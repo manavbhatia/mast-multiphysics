@@ -2139,8 +2139,7 @@ public:  // parametric constructor
                         if ( (eig_vec[0] < 0.0) && ( (*_obj._temp)() < max_temp) )  {
                             _obj._if_neg_eig = true;
                             libMesh::out << " negative eigenvalue found" << std::endl;
-                           // _obj._sys->solve(*_obj._nonlinear_elem_ops,
-                           //                  *_obj._nonlinear_assembly);
+                            (*_obj._temp)() = max_temp;
                             break;
                         }
 
