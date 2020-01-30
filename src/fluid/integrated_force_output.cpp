@@ -30,6 +30,7 @@
 
 // libMesh includes
 #include "libmesh/boundary_info.h"
+#include "libmesh/parallel.h"
 
 
 MAST::IntegratedForceOutput::IntegratedForceOutput(const RealVectorX& nvec):
@@ -61,7 +62,7 @@ MAST::IntegratedForceOutput::init(const MAST::GeomElem& elem) {
     (_assembly->discipline()).flight_condition();
     
     _physics_elem =
-    new MAST::ConservativeFluidElementBase(*_system, *_assembly, elem, p);
+    new MAST::ConservativeFluidElementBase(*_system, elem, p);
 }
 
 
