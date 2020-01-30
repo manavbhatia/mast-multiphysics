@@ -19,25 +19,25 @@ find_library(libMesh_dbg_LIBRARY
              NAMES mesh_dbg
              HINTS ${libMesh_DIR}/lib)
 
-find_library(timpi_opt_LIBRARY
-            NAMES timpi_opt
-            HINTS ${libMesh_DIR}/lib)
+         find_library(timpi_opt_LIBRARY
+           NAMES mesh_opt
+           HINTS ${libMesh_DIR}/lib)
 
-find_library(timpi_dbg_LIBRARY
-            NAMES timpi_dbg
-            HINTS ${libMesh_DIR}/lib)
+         find_library(timpi_dbg_LIBRARY
+           NAMES mesh_dbg
+           HINTS ${libMesh_DIR}/lib)
             
-if (NOT timpi_opt_LIBRARY)
-        find_library(timpi_opt_LIBRARY
-                    NAMES mesh_opt
-                    HINTS ${libMesh_DIR}/lib)
-endif()
-
-if (NOT timpi_dbg_LIBRARY)
-        find_library(timpi_dbg_LIBRARY
+         if (NOT timpi_opt_LIBRARY)
+                 find_library(timpi_opt_LIBRARY
                     NAMES mesh_dbg
                     HINTS ${libMesh_DIR}/lib)
-endif()
+         endif()
+
+         if (NOT timpi_dbg_LIBRARY)
+           find_library(timpi_dbg_LIBRARY
+                    NAMES mesh_dbg
+                    HINTS ${libMesh_DIR}/lib)
+         endif()
 
 # If debug library is not available then set it to the optimized library
 if(NOT libMesh_dbg_LIBRARY)
