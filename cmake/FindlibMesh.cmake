@@ -48,6 +48,9 @@ if(NOT libMesh_dbg_LIBRARY)
     find_library(timpi_dbg_LIBRARY
                  NAMES timpi_opt
                  HINTS ${libMesh_DIR}/lib)
+    find_library(timpi_dbg_LIBRARY
+                 NAMES timpi_opt
+                 HINTS ${libMesh_DIR}/lib)
 endif()
 
 

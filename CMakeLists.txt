@@ -48,10 +48,10 @@ find_package(HDF5 REQUIRED)
 find_package(libMesh REQUIRED)
 find_package(Eigen3 REQUIRED)
 # Note: for some reason, letting CMake find a package configuration file for Boost from
-#       a CMake/Spack-based installation of Boost causes trouble. Some of the include 
-#       directories seem to be missing in this case. We disable the search for a 
+#       a CMake/Spack-based installation of Boost causes trouble. Some of the include
+#       directories seem to be missing in this case. We disable the search for a
 #       Boost CMake configuration in the FindBoost module for now.
-set(Boost_NO_BOOST_CMAKE ON) 
+set(Boost_NO_BOOST_CMAKE ON)
 find_package(Boost COMPONENTS iostreams system filesystem unit_test_framework REQUIRED)
 message("-- Found Boost include: ${Boost_INCLUDE_DIRS}") # To ensure the found Boost is what user expected
 message("-- Found Boost libs:    ${Boost_LIBRARY_DIRS}") # To ensure the found Boost is what user expected
@@ -104,10 +104,7 @@ if (ENABLE_NASTRANIO)
     else()
         message(STATUS "  Numpy package found")
     endif()
-    
-    set (MAST_ENABLE_NASTRANIO 1)
-else()
-    set (MAST_ENABLE_NASTRANIO 0)
+
 endif()
 
 # THIRD PARTY/CONTRIB
