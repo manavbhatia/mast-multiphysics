@@ -383,9 +383,18 @@ public:  // parametric constructor
         // now setup the optimization data
         _n_vars = _n_dv_stations_x + 2 * _n_dv_stations_x * _n_stiff; // for thickness variable
         _n_eq = 0;
-        _n_ineq = _n_eig + 1 +
-                  _n_elems + // constraint that each eigenvalue > 0 flutter constraint + one element stress functional per elem
-                    1 ;    // make sure temp of omega0 is larger than T_final
+        if (_if_vk) {
+            _n_ineq = _n_eig + 1 +
+                      _n_elems +
+                      // constraint that each eigenvalue > 0 flutter constraint + one element stress functional per elem
+                      1;    // make sure temp of omega0 is larger than T_final
+        }else{
+            _n_ineq = _n_eig + 1 +
+                      _n_elems +
+                      // constraint that each eigenvalue > 0 flutter constraint + one element stress functional per elem
+                      1;    // make sure temp of omega0 is larger than T_final
+        }
+
         _max_iters = 1000;
 
         // limit stress
@@ -1490,7 +1499,7 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
         // evaluate the temperature constraint
         //////////////////////////////////////////////////////////////////////
-
+        if(_if_vk)
         fvals[_n_eig+1+_mesh->n_elem()] = 1 - ( _T_omega_0 / (*_temp)() );
 
 
@@ -1759,36 +1768,36 @@ public:  // parametric constructor
                 unsigned int
                         nconv = std::min(_sys->get_n_converged_eigenvalues(),
                                          _sys->get_n_requested_eigenvalues());
-                if (_basis.size() > 0)
-                    libmesh_assert(_basis.size() == nconv);
-                else {
-                    _basis.resize(nconv);
-                    for (unsigned int i = 0; i < _basis.size(); i++)
-                        _basis[i] = nullptr;
-                }
-
-                // vector of eigenvalues
-                std::vector<Real> eig_vals(nconv);
-
-                bool if_all_eig_positive = true;
-
-                libMesh::ExodusII_IO *
-                        writer = nullptr;
-
-                if (if_write_output)
-                    writer = new libMesh::ExodusII_IO(*_mesh);
-
-                for (unsigned int i = 0; i < nconv; i++) {
-
-                    // create a vector to store the basis
-                    if (_basis[i] == nullptr)
-                        _basis[i] = _sys->solution->zero_clone().release(); // what happens in this line ?
-
-                    // now write the eigenvalue
-                    Real
-                            re = 0.,
-                            im = 0.;
-                    _sys->get_eigenpair(i, re, im, *_basis[i]);
+//                if (_basis.size() > 0)
+//                    libmesh_assert(_basis.size() == nconv);
+//                else {
+//                    _basis.resize(nconv);
+//                    for (unsigned int i = 0; i < _basis.size(); i++)
+//                        _basis[i] = nullptr;
+//                }
+//
+//                // vector of eigenvalues
+//                std::vector<Real> eig_vals(nconv);
+//
+//                bool if_all_eig_positive = true;
+//
+//                libMesh::ExodusII_IO *
+//                        writer = nullptr;
+//
+//                if (if_write_output)
+//                    writer = new libMesh::ExodusII_IO(*_mesh);
+//
+//                for (unsigned int i = 0; i < nconv; i++) {
+//
+//                    // create a vector to store the basis
+//                    if (_basis[i] == nullptr)
+//                        _basis[i] = _sys->solution->zero_clone().release(); // what happens in this line ?
+//
+//                    // now write the eigenvalue
+//                    Real
+//                            re = 0.,
+//                            im = 0.;
+//                    _sys->get_eigenpair(i, re, im, *_basis[i]);
 
 //                    libMesh::out
 //                            << std::setw(35) << std::fixed << std::setprecision(15)
@@ -1812,7 +1821,7 @@ public:  // parametric constructor
 //                                               i + 1, //  time step
 //                                               i);    //  time
 //                    }
-                }
+//                }
 
 
                 for (unsigned int i = 0; i < _n_vars; i++) {
@@ -2316,7 +2325,8 @@ public:  // parametric constructor
                                              *_obj._nonlinear_assembly);
 
                             // copy the solution to the base solution vector
-                            sol = *_obj._sys->solution;
+                            sol.swap(*_obj._sys->solution);
+//                            sol = *_obj._sys->solution;
 
                             (*_obj._temp)() = current_temp;
                             solve_iters -= 1;
@@ -2325,7 +2335,7 @@ public:  // parametric constructor
 
                         // if eigenvalue less than omega_0 is found interpolate to find temperature at omega = omega_0
 
-                        if (eig_vec[0] < _obj._omega_0){
+                        if (true) {//(eig_vec[0] < _obj._omega_0){
                             libMesh::out << " eigenvalue less than omega_0 found " << std::endl;
 
                             current_temp = (*_obj._temp)();
@@ -2337,7 +2347,7 @@ public:  // parametric constructor
                                              *_obj._nonlinear_assembly);
 
                             // copy the solution to the base solution vector
-                            sol_omega0 = *_obj._sys->solution;
+                            sol_omega0.swap(*_obj._sys->solution);
 
                             (*_obj._temp)() = current_temp;
                             solve_iters -= 1;
