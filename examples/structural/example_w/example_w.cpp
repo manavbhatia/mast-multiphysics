@@ -2025,6 +2025,7 @@ public:  // parametric constructor
             // check if the system solved is linear or nonlinear
             bool if_vk = _obj._if_vk;
 
+            bool if_negative_found = false;
             ///////////////////////////////////////////////////////////////
             // first, solve the quasi-steady problem
             ///////////////////////////////////////////////////////////////
@@ -2335,9 +2336,9 @@ public:  // parametric constructor
 
                         // if eigenvalue less than omega_0 is found interpolate to find temperature at omega = omega_0
 
-                        if (true) {//(eig_vec[0] < _obj._omega_0){
+                        if ((eig_vec[0] < _obj._omega_0) && (!if_negative_found)){
                             libMesh::out << " eigenvalue less than omega_0 found " << std::endl;
-
+                            if_negative_found = true;
                             current_temp = (*_obj._temp)();
                             // interpollation
                             _obj._T_omega_0 = prev_temp + (current_temp - prev_temp) * (_obj._omega_0 - prev_eig) /
