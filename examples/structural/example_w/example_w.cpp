@@ -278,7 +278,8 @@ protected:      // protected member variables
     // output quantity objects to evaluate stress
     std::vector<MAST::StressStrainOutputBase *> _outputs;
     bool _if_neg_eig;
-    Real _omega_0, _T_omega_0;
+    double _omega_0;
+    Real _T_omega_0;
 public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
                                                                   MAST::Examples::GetPotWrapper& input) :
@@ -2263,9 +2264,8 @@ public:  // parametric constructor
                                     << std::setw(25) << vec1[0] << std::endl;
                         }
 
+                        // solving the eigenvalue problem
 
-                        if (true //i%2== 0
-                                ){
                             _obj._modal_assembly->set_base_solution(*_obj._sys->solution);
                             _obj._sys->eigenproblem_solve( *_obj._modal_elem_ops, *_obj._modal_assembly);
                             unsigned int
@@ -2301,7 +2301,7 @@ public:  // parametric constructor
 
                             out_eig << std::endl;
                             _obj._modal_assembly->clear_base_solution();
-                        }
+
 
 
                         _obj._sys->time += dt;
@@ -2344,8 +2344,8 @@ public:  // parametric constructor
 
 
                         // if eigenvalue less than omega_0 is found interpolate to find temperature at omega = omega_0
-
-                        if (true){ //((eig_vec[0] < _obj._omega_0) && (!if_negative_found)){
+                        auto min_eig = std::min_element(&eig_vec[0],&eig_vec[nconv]);
+                        if ((*min_eig < _obj._omega_0) && (!if_negative_found)){
                             libMesh::out << " eigenvalue less than omega_0 found " << std::endl;
                             if_negative_found = true;
                             current_temp = (*_obj._temp)();
