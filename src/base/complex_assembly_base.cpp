@@ -38,6 +38,7 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/petsc_vector.h"
 #include "libmesh/petsc_matrix.h"
+#include "libmesh/libmesh_logging.h"
 
 
 

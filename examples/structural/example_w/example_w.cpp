@@ -111,7 +111,7 @@
 #include "libmesh/string_to_enum.h"
 #include "libmesh/nonlinear_solver.h"
 
-
+#include "libmesh/parallel.h"
 
 void
 stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj(int*    mode,

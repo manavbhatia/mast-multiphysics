@@ -11,7 +11,7 @@ find_path(libMesh_INCLUDE_DIR libmesh/libmesh_config.h
 
 # Find the optimized libraries.
 find_library(libMesh_opt_LIBRARY
-             NAMES mesh_dbg
+             NAMES mesh_opt
              HINTS ${libMesh_DIR}/lib)
 
 # Find the debug libraries.
@@ -19,34 +19,31 @@ find_library(libMesh_dbg_LIBRARY
              NAMES mesh_dbg
              HINTS ${libMesh_DIR}/lib)
 
-         find_library(timpi_opt_LIBRARY
-           NAMES mesh_opt
-           HINTS ${libMesh_DIR}/lib)
+find_library(timpi_opt_LIBRARY
+            NAMES timpi_opt
+            HINTS ${libMesh_DIR}/lib)
 
-         find_library(timpi_dbg_LIBRARY
-           NAMES mesh_dbg
-           HINTS ${libMesh_DIR}/lib)
+find_library(timpi_dbg_LIBRARY
+            NAMES timpi_dbg
+            HINTS ${libMesh_DIR}/lib)
             
-         if (NOT timpi_opt_LIBRARY)
-                 find_library(timpi_opt_LIBRARY
-                    NAMES mesh_dbg
+if (NOT timpi_opt_LIBRARY)
+        find_library(timpi_opt_LIBRARY
+                    NAMES mesh_opt
                     HINTS ${libMesh_DIR}/lib)
-         endif()
+endif()
 
-         if (NOT timpi_dbg_LIBRARY)
-           find_library(timpi_dbg_LIBRARY
+if (NOT timpi_dbg_LIBRARY)
+        find_library(timpi_dbg_LIBRARY
                     NAMES mesh_dbg
                     HINTS ${libMesh_DIR}/lib)
-         endif()
+endif()
 
 # If debug library is not available then set it to the optimized library
 if(NOT libMesh_dbg_LIBRARY)
    message("-- WARN: Did not find libmesh_dbg using libmesh_opt for debug version.")
     find_library(libMesh_dbg_LIBRARY
-                 NAMES mesh_dbg
-                 HINTS ${libMesh_DIR}/lib)
-    find_library(timpi_dbg_LIBRARY
-                 NAMES timpi_opt
+                 NAMES mesh_opt
                  HINTS ${libMesh_DIR}/lib)
     find_library(timpi_dbg_LIBRARY
                  NAMES timpi_opt
