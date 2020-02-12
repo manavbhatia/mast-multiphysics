@@ -1260,6 +1260,8 @@ public:  // parametric constructor
         // diagonal reduced order mass/stiffness operator. The eigenvalues
         // will also be independent of velocity.
 
+        *_sys->solution = steady_sol_wo_aero;
+
         libMesh::out << "** modal analysis **" << std::endl;
 
         _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
@@ -1329,30 +1331,6 @@ public:  // parametric constructor
                                        i);    //  time
             }
         }
-
-//        // solving the eig problem using smallest mag to obtain negative eigvalues
-//
-//        _sys->eigen_solver->set_position_of_spectrum( libMesh::SMALLEST_REAL );
-//        _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
-//
-//        unsigned int
-//                nconv_1 = std::min(_sys->get_n_converged_eigenvalues(),
-//                                   _sys->get_n_requested_eigenvalues());
-//        // vector of eigenvalues
-//        std::vector<Real> eig_vals_1(nconv_1);
-//
-//        for (unsigned int i = 0; i < nconv_1; i++) {
-//            // now write the eigenvalue
-//            Real
-//                    re = 0.,
-//                    im = 0.;
-//            _sys->get_eigenvalue(i, re, im);
-//
-//            eig_vals_1[i] = re;
-//        }
-//        _modal_assembly->clear_base_solution();
-//        _modal_assembly->clear_discipline_and_system();
-//        _modal_elem_ops->clear_discipline_and_system();
 
 
         //////////////////////////////////////////////////////////////////////
@@ -1763,7 +1741,9 @@ public:  // parametric constructor
                 _nonlinear_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
                 _nonlinear_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
 
+                *_sys->solution = steady_sol_wo_aero_omega_0;
 
+                // solve the iegenvalue problem around the solution obtained at T_omega0
                 _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
                 _modal_assembly->set_base_solution(steady_sol_wo_aero_omega_0);
                 _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
@@ -1774,60 +1754,7 @@ public:  // parametric constructor
                 unsigned int
                         nconv = std::min(_sys->get_n_converged_eigenvalues(),
                                          _sys->get_n_requested_eigenvalues());
-//                if (_basis.size() > 0)
-//                    libmesh_assert(_basis.size() == nconv);
-//                else {
-//                    _basis.resize(nconv);
-//                    for (unsigned int i = 0; i < _basis.size(); i++)
-//                        _basis[i] = nullptr;
-//                }
-//
-//                // vector of eigenvalues
-//                std::vector<Real> eig_vals(nconv);
-//
-//                bool if_all_eig_positive = true;
-//
-//                libMesh::ExodusII_IO *
-//                        writer = nullptr;
-//
-//                if (if_write_output)
-//                    writer = new libMesh::ExodusII_IO(*_mesh);
-//
-//                for (unsigned int i = 0; i < nconv; i++) {
-//
-//                    // create a vector to store the basis
-//                    if (_basis[i] == nullptr)
-//                        _basis[i] = _sys->solution->zero_clone().release(); // what happens in this line ?
-//
-//                    // now write the eigenvalue
-//                    Real
-//                            re = 0.,
-//                            im = 0.;
-//                    _sys->get_eigenpair(i, re, im, *_basis[i]);
 
-//                    libMesh::out
-//                            << std::setw(35) << std::fixed << std::setprecision(15)
-//                            << re << std::endl;
-//
-//                    eig_vals[i] = re;
-//
-//                    // keep the flag true or change to false
-//                    //if_all_eig_positive = (if_all_eig_positive && (re > 0.)) ? true : false;
-//
-//                    if (false) { //(if_write_output) {
-//
-//                        // copy the solution for output
-//                        (*_sys->solution) = *_basis[i];
-//
-//                        // We write the file in the ExodusII format.
-//                        std::set<std::string> nm;
-//                        nm.insert(_sys->name());
-//                        writer->write_timestep("modes.exo",
-//                                               *_eq_sys,
-//                                               i + 1, //  time step
-//                                               i);    //  time
-//                    }
-//                }
 
 
                 for (unsigned int i = 0; i < _n_vars; i++) {
@@ -1836,9 +1763,6 @@ public:  // parametric constructor
                     // iterate over each dv and calculate the sensitivity
                     libMesh::NumericVector <Real> &dXdp_omega0 = _sys->add_sensitivity_solution(1);
                     dXdp_omega0.zero();
-
-                    // set system solution to sol_wo_aero_omega0 for the calculation of dxdp
-                    *_sys->solution =  steady_sol_wo_aero_omega_0;
 
                     // sensitivity analysis
                     _sys->sensitivity_solve(*_nonlinear_elem_ops,
@@ -1851,6 +1775,7 @@ public:  // parametric constructor
                     // eig_sens_omega0 = \frac{\partial \omega}{\partial x_i} +
                     //                   \frac{\partial \omega}{\partial X} \frac{d X}{d x_i}
                     // we are only interested in the first entry for omega = omega_0
+
                     std::vector<Real> eig_sens_omega0(nconv);
 
                     _modal_assembly->set_base_solution(dXdp_omega0, true);
@@ -1862,6 +1787,7 @@ public:  // parametric constructor
 
                     // eig_sens_omega0_T = \frac{\partial \omega}{\partial T}
                     // for this term we dont need a base solution therefore we zero out the dxdp
+
                     std::vector<Real> eig_sens_omega0_T(nconv);
                     dXdp_omega0.zero();
                     _modal_assembly->set_base_solution(dXdp_omega0, true);
@@ -2035,7 +1961,9 @@ public:  // parametric constructor
             // check if the system solved is linear or nonlinear
             bool if_vk = _obj._if_vk;
 
-            bool if_negative_found = false;
+            bool if_negative_found = false,
+            if_final_temp_reached = false;
+
             ///////////////////////////////////////////////////////////////
             // first, solve the quasi-steady problem
             ///////////////////////////////////////////////////////////////
@@ -2062,23 +1990,15 @@ public:  // parametric constructor
             libMesh::out << " stress cleared" << std::endl;
 
 
-            _obj._nonlinear_assembly->set_discipline_and_system(*_obj._discipline,
-                                                                *_obj._structural_sys);
+            _obj._nonlinear_assembly->set_discipline_and_system(*_obj._discipline,*_obj._structural_sys);
+            _obj._nonlinear_elem_ops->set_discipline_and_system(*_obj._discipline,*_obj._structural_sys);
 
-            _obj._nonlinear_elem_ops->set_discipline_and_system(*_obj._discipline,
-                                                                *_obj._structural_sys);
-
-
-            _obj._modal_assembly->set_discipline_and_system(*_obj._discipline,
-                                                                *_obj._structural_sys);
-
-            _obj._modal_elem_ops->set_discipline_and_system(*_obj._discipline,
-                                                                *_obj._structural_sys);
+            _obj._modal_assembly->set_discipline_and_system(*_obj._discipline,*_obj._structural_sys);
+            _obj._modal_elem_ops->set_discipline_and_system(*_obj._discipline,*_obj._structural_sys);
 
             bool if_continuation_solver = _obj._if_continuation_solver;
 
             if (!if_continuation_solver) {
-
                 // apply scaling on thermal jaobian
                 MAST::Examples::ThermalJacobianScaling
                         *jac_scaling =  dynamic_cast<MAST::Examples::ThermalJacobianScaling*>(_obj._jac_scaling);
@@ -2149,21 +2069,16 @@ public:  // parametric constructor
                 pt0  = *nd;
 
                 for ( ; n_it != n_end; n_it++) {
-
                     dr1  = pt0;
                     dr1 -= pt;
 
                     dr2  = **n_it;
                     dr2 -= pt;
-
                     if (dr2.norm() < dr1.norm()) {
-
                         nd  = *n_it;
                         pt0 = *nd;
                     }
                 }
-
-                // std::cout << *nd << std::endl;
 
                 _obj._omega_0 = 1.e4;
 
@@ -2186,12 +2101,10 @@ public:  // parametric constructor
                         n_press_steps = 0;
 
                 // write the header to the load.txt file
-
                 std::ofstream out;   // text file for nl solution
                 std::ofstream out_eig;  // text file for eigenvalues
 
                 if (_obj.comm().rank() == 0) {
-
                     out.open("continuation_solver_load.txt", std::ofstream::out);
                     out
                             << std::setw(10) << "iter"
@@ -2217,15 +2130,12 @@ public:  // parametric constructor
 
 
                 if (n_temp_steps) {
-
                     MAST::PseudoArclengthContinuationSolver solver;
                     solver.schur_factorization = _obj._input("if_schur_factorization", "use Schur-factorization in continuation solver", true);
                     solver.min_step            = _obj._input("min_step", "minimum arc-length step-size for continuation solver",          10.);
                     solver.max_it              = _obj._input("max_it", "max nr iterations",          10);
                     solver.max_step            = _obj._input("max_step", "maximum arc-length step-size for continuation solver",   20.);
                     solver.step_desired_iters  = _obj._input("step_desired_iters", "maximum arc-length step-size for continuation solver",5);
-
-
 
                     // specify temperature as the load parameter to be changed per
                     // load step
@@ -2236,16 +2146,19 @@ public:  // parametric constructor
                     // the initial deformation direction is identified with a
                     // unit change in temperature.
                     solver.initialize((*_obj._temp)());
+
                     // with the search direction defined, we define the arc length
                     // per load step to be a factor of 2 greater than the initial step.
-
                     solver.arc_length *= 2;
 
+                    // vector that will store the eigenvalues
                     std::vector<Real> eig_vec(_obj._n_eig, 0);
 
                     for (unsigned int i=0; i<n_temp_steps; i++) {
 
+                        // solve for the temperature
                         solver.solve();
+
                         libMesh::out
                                 << "  iter: " << i
                                 << "  temperature: " << (*_obj._temp)()
@@ -2264,8 +2177,7 @@ public:  // parametric constructor
                                     << std::setw(25) << vec1[0] << std::endl;
                         }
 
-                        // solving the eigenvalue problem
-
+                        // solving the eigenvalue problem around the steady state solution
                             _obj._modal_assembly->set_base_solution(*_obj._sys->solution);
                             _obj._sys->eigenproblem_solve( *_obj._modal_elem_ops, *_obj._modal_assembly);
                             unsigned int
@@ -2302,32 +2214,21 @@ public:  // parametric constructor
                             out_eig << std::endl;
                             _obj._modal_assembly->clear_base_solution();
 
-
-
                         _obj._sys->time += dt;
-//                         write the current solution to the exodus file for
-//                         visualization
+                        //   write the current solution to the exodus file for
+                        //   visualization
                         writer->write_timestep("sol_continuation_solver.exo",
                                                *_obj._eq_sys,
                                                  i+1,
                                                  i+1);//,
-                                              // _obj._sys->time);
 
-
-//                        // if a negative eigenvalue is detected
-//                        // change flag to true to increase obj and fvals
-//                        // and solve the system one last time and exit
-//                        if ( (eig_vec[0] < 0.0) && ( (*_obj._temp)() < max_temp) )  {
-//                            _obj._if_neg_eig = true;
-//                            libMesh::out << " negative eigenvalue found" << std::endl;
-//                            (*_obj._temp)() = max_temp;
-//                            break;
-//                        }
 
                         // if the temperature given by the solver is bigger than tmax
                         // go back to tmax and solve the system one more time and exit
-                        if ((*_obj._temp)() > max_temp) {
+                        if (((*_obj._temp)() > max_temp) && (!if_final_temp_reached)) {
                             libMesh::out << " Final temperature reached " << std::endl;
+                            if_final_temp_reached = true;
+
                             current_temp = (*_obj._temp)();
 
                             (*_obj._temp)() = max_temp;
@@ -2335,8 +2236,7 @@ public:  // parametric constructor
                                              *_obj._nonlinear_assembly);
 
                             // copy the solution to the base solution vector
-                            sol.swap(*_obj._sys->solution);
-//                            sol = *_obj._sys->solution;
+                            sol = *_obj._sys->solution;
 
                             (*_obj._temp)() = current_temp;
                             solve_iters -= 1;
@@ -2348,16 +2248,19 @@ public:  // parametric constructor
                         if ((*min_eig < _obj._omega_0) && (!if_negative_found)){
                             libMesh::out << " eigenvalue less than omega_0 found " << std::endl;
                             if_negative_found = true;
+
                             current_temp = (*_obj._temp)();
                             // interpollation
                             _obj._T_omega_0 = prev_temp + (current_temp - prev_temp) * (_obj._omega_0 - prev_eig) /
-                                                                                (eig_vec[0] - prev_eig);
+                                                                                       (eig_vec[0] - prev_eig);
+                            libMesh::out << " T at omega = omega_0 is :  " << _obj._T_omega_0 <<  std::endl;
+
                             (*_obj._temp)() = _obj._T_omega_0;
                             _obj._sys->solve(*_obj._nonlinear_elem_ops,
                                              *_obj._nonlinear_assembly);
 
                             // copy the solution to the base solution vector
-                            sol_omega0.swap(*_obj._sys->solution);
+                            sol_omega0 = *_obj._sys->solution;
 
                             (*_obj._temp)() = current_temp;
                             solve_iters -= 1;
@@ -2367,23 +2270,19 @@ public:  // parametric constructor
                             (*_obj._temp)() = max_temp;
                             break;
                         }
-                    prev_temp = (*_obj._temp)();
+                        prev_temp = (*_obj._temp)();
+                        prev_eig  = eig_vec[0];
                     }
                     // clear assembly and loading parameter from continuation solver
                     solver.clear_assembly_and_load_parameters();
                 }
             }
 
-
-
-
             _obj._nonlinear_assembly->clear_discipline_and_system();
             _obj._nonlinear_elem_ops->clear_discipline_and_system();
 
             _obj._modal_assembly->clear_discipline_and_system();
             _obj._modal_elem_ops->clear_discipline_and_system();
-
-
 
             return sol;
         }
