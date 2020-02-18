@@ -742,9 +742,18 @@ public:  // parametric constructor
         // design variables for the thickness values
         for (unsigned int i = 0; i < _n_vars; i++) {
 
-            _dv_init[i] = _input("dv_init", "", th / th_u, i);
+         //   _dv_init[i] = _input("dv_init", "", th / th_u, i);
             _dv_low[i] = th_l / th_u;
             _dv_scaling[i] = th_u;
+        }
+
+        for (unsigned int i = 0; i < _n_dv_stations_x; i++) {
+            _dv_init[i] = _input("dv_init", "", th / th_u, i);
+        }
+
+
+        for (unsigned int i = _n_dv_stations_x; i < _n_vars; i++) {
+            _dv_init[i] = _input("dv_init", "", th_u / th_u, i);
         }
 
 //        _dv_init     [          0 ] =    0.000756353417639/ th_u;
