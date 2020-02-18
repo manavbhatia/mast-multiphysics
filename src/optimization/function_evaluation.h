@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -49,6 +49,7 @@ namespace MAST {
         
         FunctionEvaluation(const libMesh::Parallel::Communicator& comm_in):
         libMesh::ParallelObject (comm_in),
+        _iter                   (0),
         _n_vars                 (0),
         _n_eq                   (0),
         _n_ineq                 (0),
@@ -259,6 +260,8 @@ namespace MAST {
                                      bool if_write_to_optim_file);
 
     protected:
+        
+        unsigned int _iter;
         
         unsigned int _n_vars;
         

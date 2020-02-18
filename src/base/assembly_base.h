@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -63,7 +63,14 @@ namespace MAST {
          */
         virtual ~AssemblyBase();
         
+        /*!
+         *  subdomain ids for which residuakl and Jacobian contributions will not be computed. Instead,
+         *  a small diagonal value will be added to the Jacobian for the dofs corresponding to this
+         *  element.
+         */
+        std::set<unsigned int> diagonal_elem_subdomain_id;
         
+
         class SolverMonitor {
         public:
             SolverMonitor(){}

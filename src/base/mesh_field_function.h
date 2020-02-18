@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -99,7 +99,16 @@ namespace MAST {
                                  const libMesh::Point& p,
                                  const Real t,
                                  RealVectorX& v) const;
-        
+
+
+        /*!
+         *    calculates the value of the function at the specified point,
+         *    \p p, and time, \p t, and returns it in \p v.
+         */
+        virtual void perturbation_gradient (const libMesh::Point& p,
+                                            const Real t,
+                                            RealMatrixX& v) const;
+
         
         /*!
          *   initializes the data structures to perform the interpolation 

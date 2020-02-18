@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -300,6 +300,7 @@ MAST::SubCellFE::init_for_side(const MAST::GeomElem& elem,
     _fe->get_JxW();
     if (if_calculate_dphi)
         _fe->get_dphi();
+    if (_init_second_order_derivatives) _fe->get_d2phi();
     
 
     //////////////////////////////////////////////////////////////

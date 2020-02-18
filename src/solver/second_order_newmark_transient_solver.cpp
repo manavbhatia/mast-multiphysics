@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -168,8 +168,7 @@ update_velocity(libMesh::NumericVector<Real>& vec,
     &prev_acc = this->acceleration(1);
 
     // first calculate the acceleration
-    vec.zero();
-    vec.add(                   1.,      sol);
+    vec = sol;
     vec.add(                  -1., prev_sol);
     vec.scale(gamma/beta/dt);
     vec.add(        1.-gamma/beta, prev_vel);
@@ -191,8 +190,7 @@ update_acceleration(libMesh::NumericVector<Real>& vec,
     &prev_acc = this->acceleration(1);
     
     // first calculate the acceleration
-    vec.zero();
-    vec.add(             1,       sol);
+    vec = sol;
     vec.add(            -1., prev_sol);
     vec.scale(1./beta/dt/dt);
     vec.add(    -1./beta/dt, prev_vel);
@@ -213,8 +211,7 @@ update_sensitivity_velocity(libMesh::NumericVector<Real>& vec,
     &prev_acc = this->acceleration_sensitivity(1);
     
     // first calculate the acceleration
-    vec.zero();
-    vec.add(                   1.,      sol);
+    vec = sol;
     vec.add(                  -1., prev_sol);
     vec.scale(gamma/beta/dt);
     vec.add(        1.-gamma/beta, prev_vel);
@@ -235,8 +232,7 @@ update_sensitivity_acceleration(libMesh::NumericVector<Real>& vec,
     &prev_acc = this->acceleration_sensitivity(1);
     
     // first calculate the acceleration
-    vec.zero();
-    vec.add(             1,       sol);
+    vec = sol;
     vec.add(            -1., prev_sol);
     vec.scale(1./beta/dt/dt);
     vec.add(    -1./beta/dt, prev_vel);
@@ -253,8 +249,8 @@ update_delta_velocity(libMesh::NumericVector<Real>& vec,
                       const libMesh::NumericVector<Real>& sol) {
     
     // first calculate the acceleration
-    vec.zero();
-    vec.add( gamma/beta/dt,      sol);
+    vec = sol;
+    vec.scale( gamma/beta/dt);
     vec.close();
 }
 
@@ -267,8 +263,8 @@ update_delta_acceleration(libMesh::NumericVector<Real>& vec,
                           const libMesh::NumericVector<Real>& sol) {
     
     // first calculate the acceleration
-    vec.zero();
-    vec.add(  1./beta/dt/dt,       sol);
+    vec = sol;
+    vec.scale(  1./beta/dt/dt);
     vec.close();
 }
 
@@ -457,6 +453,15 @@ MAST::SecondOrderNewmarkTransientSolver::
 elem_shape_sensitivity_calculations(const MAST::FunctionBase& f,
                                     RealVectorX& vec) {
     
+    libmesh_assert(false); // to be implemented
+}
+
+
+
+void
+MAST::SecondOrderNewmarkTransientSolver::
+elem_topology_sensitivity_calculations(const MAST::FunctionBase& f,
+                                       RealVectorX& vec) {
     libmesh_assert(false); // to be implemented
 }
 

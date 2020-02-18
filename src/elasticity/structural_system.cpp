@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -25,6 +25,7 @@
 #include "base/parameter.h"
 
 // libMesh includes
+#include "libmesh/libmesh_logging.h"
 #include "libmesh/numeric_vector.h"
 #include "libmesh/equation_systems.h"
 #include "libmesh/sparse_matrix.h"

@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -33,6 +33,7 @@
 #include "base/output_assembly_elem_operations.h"
 #include "solver/slepc_eigen_solver.h"
 
+
 // libMesh includes
 #include "libmesh/numeric_vector.h"
 #include "libmesh/equation_systems.h"
@@ -47,6 +48,10 @@
 #include "libmesh/generic_projector.h"
 #include "libmesh/wrapped_functor.h"
 #include "libmesh/fem_context.h"
+#include "libmesh/parallel.h"
+
+
+#include "libmesh/petsc_matrix.h"
 
 
 MAST::NonlinearSystem::NonlinearSystem(libMesh::EquationSystems& es,
@@ -522,9 +527,9 @@ MAST::NonlinearSystem::get_eigenpair(unsigned int i,
 
             Real
             v = tmp->dot(vec_re);
-            
+
             // make sure that v is a nonzero value
-            libmesh_assert_greater(v, 0.);
+            libmesh_assert_greater(v, 0.0);
             vec_re.scale(1./std::sqrt(v));
         }
             break;
@@ -636,19 +641,35 @@ eigenproblem_sensitivity_solve (MAST::AssemblyElemOperations&    elem_ops,
                 break;
         }
     }
-    
+
+
+
+    // create a copy of Matrix A and B to store the jacobians jac_A and jac_B
+    Mat matA, matB;
+
+    MatDuplicate(dynamic_cast<libMesh::PetscMatrix<Real>*>(matrix_A)->mat(),
+            MAT_COPY_VALUES,
+            &matA);
+    MatDuplicate(dynamic_cast<libMesh::PetscMatrix<Real>*>(matrix_B)->mat(),
+                 MAT_COPY_VALUES,
+                 &matB);
+
+    std::unique_ptr<libMesh::SparseMatrix<Real>>
+            jac_mat_A(new libMesh::PetscMatrix<Real>(matA, comm())),
+            jac_mat_B(new libMesh::PetscMatrix<Real>(matB, comm()));
+
     // calculate sensitivity of matrix quantities
-    assembly.eigenproblem_sensitivity_assemble(f, matrix_A, matrix_B);
-    
-    
+    assembly.eigenproblem_sensitivity_assemble(f, jac_mat_A.get(), jac_mat_B.get());
+
+
     // now calculate sensitivity of each eigenvalue for the parameter
     for (unsigned int i=0; i<n_calc; i++) {
         
         switch (_eigen_problem_type) {
                 
             case libMesh::HEP: {
-                
-                matrix_A->vector_mult(*tmp, *x_right[i]);
+
+                jac_mat_A->vector_mult(*tmp, *x_right[i]);
                 sens[i] = x_right[i]->dot(*tmp);                  // x^H A' x
                 sens[i]-= eig[i] * x_right[i]->dot(*x_right[i]);  // - lambda x^H x
                 sens[i] /= denom[i];                              // x^H x
@@ -656,10 +677,10 @@ eigenproblem_sensitivity_solve (MAST::AssemblyElemOperations&    elem_ops,
                 break;
                 
             case libMesh::GHEP: {
-                
-                matrix_A->vector_mult(*tmp, *x_right[i]);
+
+                jac_mat_A->vector_mult(*tmp, *x_right[i]);
                 sens[i] = x_right[i]->dot(*tmp);              // x^H A' x
-                matrix_B->vector_mult(*tmp, *x_right[i]);
+                jac_mat_B->vector_mult(*tmp, *x_right[i]);
                 sens[i]-= eig[i] * x_right[i]->dot(*tmp);     // - lambda x^H B' x
                 sens[i] /= denom[i];                          // x^H B x
             }
@@ -671,11 +692,16 @@ eigenproblem_sensitivity_solve (MAST::AssemblyElemOperations&    elem_ops,
                 break;
         }
     }
-    
+
+    // destroy to avoid memory leaks
+    MatDestroy(&matA);
+    MatDestroy(&matB);
+
     // now delete the x_right vectors
     for (unsigned int i=0; i<x_right.size(); i++)
         delete x_right[i];
-    
+
+
     assembly.clear_elem_operation_object();
 }
 

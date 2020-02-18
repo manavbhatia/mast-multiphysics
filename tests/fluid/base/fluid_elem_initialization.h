@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -162,7 +162,6 @@ struct BuildFluidElem {
         _geom_elem = new MAST::GeomElem;
         _geom_elem->init(**_mesh->elements_begin(), *_sys_init);
         _fluid_elem = new MAST::ConservativeFluidElementBase(*_sys_init,
-                                                             *_assembly,
                                                              *_geom_elem,
                                                              *_flight_cond);
         

@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -38,7 +38,6 @@ namespace MAST {
         
     public:
         BendingStructuralElem(MAST::SystemInitialization& sys,
-                              MAST::AssemblyBase& assembly,
                               const MAST::GeomElem& elem,
                               const MAST::ElementPropertyCardBase& p);
         

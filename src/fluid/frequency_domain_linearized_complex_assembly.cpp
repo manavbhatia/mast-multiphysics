@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -122,7 +122,7 @@ init(const MAST::GeomElem& elem) {
     
     FrequencyDomainLinearizedConservativeFluidElem
     *freq_elem =
-    new MAST::FrequencyDomainLinearizedConservativeFluidElem(*_system, *_assembly, elem, p);
+    new MAST::FrequencyDomainLinearizedConservativeFluidElem(*_system, elem, p);
     freq_elem->freq   = _frequency;
     
     _physics_elem = freq_elem;

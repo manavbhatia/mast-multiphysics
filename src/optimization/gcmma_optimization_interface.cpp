@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -281,7 +281,7 @@ MAST::GCMMAOptimizationInterface::optimize() {
                 << std::endl;
                 for (unsigned int i=0; i<XMMA.size(); i++)
                     XMMA_new[i] = XOLD1[i] + frac*(XMMA[i]-XOLD1[i]);
-                
+
                 _feval->_evaluate_wrapper(XMMA_new,
                                           F0NEW, false, DF0DX,
                                           FNEW, eval_grads, DFDX);

@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -242,6 +242,6 @@ MAST::StructuralTransientAssemblyElemOperations::init(const MAST::GeomElem& elem
     dynamic_cast<const MAST::ElementPropertyCardBase&>(_discipline->get_property_card(elem));
     
     _physics_elem =
-    MAST::build_structural_element(*_system, *_assembly, elem, p).release();
+    MAST::build_structural_element(*_system, elem, p).release();
 }
 

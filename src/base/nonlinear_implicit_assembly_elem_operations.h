@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -78,6 +78,15 @@ namespace MAST {
         virtual void
         elem_shape_sensitivity_calculations(const MAST::FunctionBase& f,
                                             RealVectorX& vec) = 0;
+
+        /*!
+         *   performs the element topology sensitivity calculations over \p elem,
+         *   and returns the element residual sensitivity in \p vec .
+         */
+        virtual void
+        elem_topology_sensitivity_calculations(const MAST::FunctionBase& f,
+                                               RealVectorX& vec) = 0;
+
 
         /*!
          *   performs the element topology sensitivity calculations over \p elem,

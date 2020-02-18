@@ -1,4 +1,11 @@
 
+/*
+ * the objective of this code is to design a stiffened panel, thermally stressed that would avoid static instability.
+ * First bifurcation is a static instability and we want to design the panel such that it does not get to it.
+ * The thermal load is applied uniformly accross the panel.
+ * Von Karman strain is used for the calculation of strain.
+ */
+
 // C++ includes
 #include <memory>
 #include <iomanip>
@@ -104,7 +111,7 @@
 #include "libmesh/string_to_enum.h"
 #include "libmesh/nonlinear_solver.h"
 
-
+#include "libmesh/parallel.h"
 
 void
 stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj(int*    mode,
@@ -204,8 +211,6 @@ protected:      // protected member variables
             _thz_stiff_f; // one per stiffener
     // vector of basis vectors from modal analysis
     std::vector<libMesh::NumericVector<Real> *> _basis;
-    // output quantity objects to evaluate stress
-    std::vector<MAST::StressStrainOutputBase *> _outputs;
     // stationwise function objects for thickness
     std::vector<MAST::ConstantFieldFunction *>
             _th_station_functions_plate,
@@ -269,7 +274,10 @@ protected:      // protected member variables
     MAST::StructuralModalEigenproblemAssemblyElemOperations*  _modal_elem_ops;
     Real                                      _p_val, _vm_rho;
     bool _if_continuation_solver;
-
+    MAST::StressStrainOutputBase*               _stress_elem;
+    // output quantity objects to evaluate stress
+    std::vector<MAST::StressStrainOutputBase *> _outputs;
+    bool _if_neg_eig;
 public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
                                                                   MAST::Examples::GetPotWrapper& input) :
@@ -307,6 +315,7 @@ public:  // parametric constructor
             _piston_bc(nullptr),
             _flutter_solver(nullptr),
             _stress_assembly(nullptr),
+            _stress_elem(nullptr),
             _modal_elem_ops(nullptr),
             _nonlinear_elem_ops(nullptr),
             _length(0.),
@@ -330,7 +339,8 @@ public:  // parametric constructor
             _velocity_f(nullptr),
             _p_val(0.),
             _vm_rho(0.),
-            _if_continuation_solver(false)
+            _if_continuation_solver(false),
+            _if_neg_eig(false)
 
 //        _thy_station_vals(nullptr),
 //        _thz_station_vals(nullptr)
@@ -425,6 +435,8 @@ public:  // parametric constructor
         _modal_elem_ops     = new MAST::StructuralModalEigenproblemAssemblyElemOperations;
 
         _stress_assembly    = new MAST::StressAssembly;
+        _stress_elem        = new MAST::StressStrainOutputBase;
+
 
         _fsi_assembly       = new MAST::StructuralFluidInteractionAssembly;// nonlinear assembly object
 
@@ -735,6 +747,29 @@ public:  // parametric constructor
             _dv_scaling[i] = th_u;
         }
 
+//        _dv_init     [          0 ] =    0.000756353417639/ th_u;
+//        _dv_init     [          1 ] =    0.001289105172330/ th_u;
+//        _dv_init     [          2 ] =    0.000758136764126/ th_u;
+//        _dv_init     [          3 ] =    0.004738767647553/ th_u;
+//        _dv_init     [          4 ] =    0.004366339759017/ th_u;
+//        _dv_init     [          5 ] =    0.004744810158320/ th_u;
+//        _dv_init     [          6 ] =    0.004492514256054/ th_u;
+//        _dv_init     [          7 ] =    0.004059037082863/ th_u;
+//        _dv_init     [          8 ] =    0.004498139875795/ th_u;
+//        _dv_init     [          9 ] =    0.004716538972727/ th_u;
+//        _dv_init     [         10 ] =    0.004286691718592/ th_u;
+//        _dv_init     [         11 ] =    0.004616035180759/ th_u;
+//        _dv_init     [         12 ] =    0.004543729599818/ th_u;
+//        _dv_init     [         13 ] =    0.004123091251211/ th_u;
+//        _dv_init     [         14 ] =    0.004488817534016/ th_u;
+//        _dv_init     [         15 ] =    0.004809972841285/ th_u;
+//        _dv_init     [         16 ] =    0.004365452325321/ th_u;
+//        _dv_init     [         17 ] =    0.004807931915246/ th_u;
+//        _dv_init     [         18 ] =    0.004526012717207/ th_u;
+//        _dv_init     [         19 ] =    0.004056541442243/ th_u;
+//        _dv_init     [         20 ] =    0.004527049343407/ th_u;
+
+
     }
 
     void _init_thickness_variables(){
@@ -924,6 +959,10 @@ public:  // parametric constructor
 
             // tell the section property about the material property
             _p_card_stiff[i]->set_material(*_m_card);
+
+            //_p_card_stiff[i]->set_bending_model(MAST::TIMOSHENKO);
+            //_p_card_stiff[i]->set_bending_model(MAST::BERNOULLI);
+
             if (_if_vk) _p_card_stiff[i]->set_strain(MAST::NONLINEAR_STRAIN);
 
             _p_card_stiff[i]->init();
@@ -1005,8 +1044,6 @@ public:  // parametric constructor
         _discipline->add_volume_load(0, *_p_load);          // for the panel
     }
 
-
-
     void _init_nullspace(){
 
         _nsp = new MAST::StructuralNearNullVectorSpace;
@@ -1016,40 +1053,52 @@ public:  // parametric constructor
     void _init_outputs(){
         // create the output objects, one for each element
 
+            _outputs.resize(_mesh->n_elem(), nullptr);
+
+            for (int i = 0; i < _mesh->n_elem(); i++) {
+                MAST::StressStrainOutputBase *output = new MAST::StressStrainOutputBase;
+                output->set_discipline_and_system(*_discipline, *_structural_sys);
+                output->set_aggregation_coefficients(_p_val, 1.0, _vm_rho, _stress_limit);
+                _outputs[i] = output;
+        }
+
+
+        std::vector<unsigned int> n_size(comm().size(), 0);
+
+        for (int i = 0; i < comm().size(); i++) {
+            n_size[i] = _mesh->n_elem_on_proc(i);
+        }
+
+          //  std::cout << "number of elems on proc " << 0 << " is  " << n_size[0] << std::endl;
+           // std::cout << "number of elems on proc " << 1 << " is  " << n_size[1] << std::endl;
+        //       n[comm().rank()] = _mesh->n_local_elem();
+        //     comm().sum(n);
+
+        std::vector<unsigned int> prev_elems(comm().size() , 0);
+
+        if (comm().rank() != 0) {
+            for (int j = 0; j < comm().rank() ; j++)
+                prev_elems[comm().rank()] += n_size[j];
+        }
+
+        comm().sum(prev_elems);
 
 
         libMesh::MeshBase::const_element_iterator
                 e_it = _mesh->local_elements_begin(),
                 e_end = _mesh->local_elements_end();
 
-
+        int i = 0;
         for (; e_it != e_end; e_it++) {
+            _outputs[ (i + prev_elems[comm().rank()]) ]->set_participating_elements({*e_it});
 
-            MAST::StressStrainOutputBase *output = new MAST::StressStrainOutputBase;
-
-
-            output->set_discipline_and_system(*_discipline, *_structural_sys);
-            output->set_participating_elements({*e_it});
-            output->set_aggregation_coefficients(_p_val,1.0,_vm_rho,_stress_limit);
-
-            _outputs.push_back(output);
-
-
-//                // tell the object to evaluate the data for this object only
-//                std::set<const libMesh::Elem*> e_set;
-//                e_set.insert(*e_it);
-//                output->set_elements_in_domain(e_set);
-//                output->set_points_for_evaluation(pts);
-//                output->set_volume_loads(_discipline->volume_loads());
-//                _outputs.push_back(output);
-
-            //_discipline->add_volume_output((*e_it)->subdomain_id(), *output);
+            i += 1;
         }
 
+        if (_outputs.size() != _mesh->n_elem())
+            libMesh::out << "_outputs is not the correct size " << std::endl;
 
-        // make sure that the number of output objects here is the same as the
-        // number of local elems in the mesh
-        libmesh_assert_equal_to(_outputs.size(), _mesh->n_local_elem());
+            libmesh_assert_equal_to(_outputs.size(), _mesh->n_elem());
 
 
     }
@@ -1059,19 +1108,40 @@ public:  // parametric constructor
                            std::vector<Real>& xmax) {
 
         // one DV for each element
-        x       = _dv_init;
-        xmin    = _dv_low;
-        xmax.resize(_n_vars);
-        std::fill(xmax.begin(), xmax.end(), 1.);
+
+       x.resize(_n_vars);
+       xmin.resize(_n_vars);
+       xmax.resize(_n_vars);
+
+       xmin    = _dv_low;
+       xmax    = _dv_scaling;
+
+        //
+        // now, check if the user asked to initialize dvs from a previous file
+        //
+        std::string
+                nm    =  _input("restart_optimization_file", "filename with optimization history for restart", "");
+
+        if (nm.length()) {
+
+            unsigned int
+                    iter = _input("restart_optimization_iter", "restart iteration number from file", 0);
+            this->initialize_dv_from_output_file(nm, iter, x);
+
+            libmesh_assert_equal_to(x.size(),_n_vars);
+        }
+        else {
+                x       = _dv_init;
+        }
     }
 
-    virtual void evaluate(const std::vector<Real> &dvars,
-                          Real &obj,
-                          bool eval_obj_grad,
-                          std::vector<Real> &obj_grad,
-                          std::vector<Real> &fvals,
-                          std::vector<bool> &eval_grads,
-                          std::vector<Real> &grads) {
+    virtual void evaluate(const std::vector<Real> &dvars, // design variable
+                          Real &obj,                      // objective function
+                          bool eval_obj_grad,             // flag to evaluate or not grad of obj func
+                          std::vector<Real> &obj_grad,    // the gradient of the obj func
+                          std::vector<Real> &fvals,       // constraint functions
+                          std::vector<bool> &eval_grads,  // vector of flags to evaluate gradient of constraint func
+                          std::vector<Real> &grads) {     // gradients of constraint functions
 
         libmesh_assert(_initialized);
         libmesh_assert_equal_to(dvars.size(), _n_vars);
@@ -1097,34 +1167,29 @@ public:  // parametric constructor
         libMesh::Point pt; // dummy point object
 
         // print the values of all design variables
-        libMesh::out << "New Eval" << std::endl;
+        libMesh::out << "//////////////////////////////////////////////////////////////////////"<< std::endl
+                     << " New Eval " << std::endl;
         for (unsigned int i = 0; i < _n_vars; i++)
             libMesh::out
                     << "th     [ " << std::setw(10) << i << " ] = "
                     << std::setw(20) << (*_problem_parameters[i])() << std::endl;
 
-
-        // the optimization problem is defined as
-        // min weight, subject to constraints on displacement and stresses
-        Real
-                wt = 0.;
-               // pval = 2.;
-
         bool
                 if_write_output = true;
 
         //////////////////////////////////////////////////////////////////////
+        libMesh::out << " calculation of wheight " << std::endl;
+        // the optimization problem is defined as
+        // min weight, subject to constraints on displacement and stresses
+        Real
+                wt = 0.;
         // calculate weight
         (*_weight)(pt, 0., wt);
-        //////////////////////////////////////////////////////////////////////
-        // first zero the solution
-        _sys->solution->zero();
-        this->clear_stresss();
+        libMesh::out << " wheight calculated " << std::endl;
+
+
         // solve for the steady state at zero velocity
         (*_velocity) = 0.;
-
-
-
         //////////////////////////////////////////////////////////////////////
         // steady state solution
         StiffenedPlateSteadySolverInterface steady_solve(*this,
@@ -1132,17 +1197,24 @@ public:  // parametric constructor
                                                          false,
                                                          _n_load_steps);
 
-        libMesh::out <<
-                     "//////////////////////////////////////////////////////////////////////" << std::endl;
-        if (!_if_continuation_solver)
-            libMesh::out << "Steady state solution w/ Newton raphson solver " << std::endl;
-        else
-            libMesh::out << "Steady state solution w/ continuation solver " << std::endl;
-        libMesh::out <<
-                     "//////////////////////////////////////////////////////////////////////" << std::endl;
+        if (_if_vk) {
+            if (!_if_continuation_solver) {
+                libMesh::out << "** Steady state solution w/ Newton raphson solver **" << std::endl;
+                _if_neg_eig = false;
+            }
+            else {
+                libMesh::out << "** Steady state solution w/ continuation solver **" << std::endl;
+                _if_neg_eig = false;
+            }
+        } else{
+            libMesh::out << "** Steady state solution w/ Newton raphson solver **" << std::endl;
+        }
 
         steady_solve.solve();
-        // use this solution as the base solution later if no flutter is found.
+
+//        libmesh_error();
+
+        // us this solution as the base solution later if no flutter is found.
         libMesh::NumericVector<Real> &
                 steady_sol_wo_aero = _sys->add_vector("steady_sol_wo_aero");
         steady_sol_wo_aero = *_sys->solution;
@@ -1151,9 +1223,16 @@ public:  // parametric constructor
         // now that we have the solution under the influence of thermal loads,
         // we will use a small number of load steps to get to the steady-state
         // solution
-        steady_solve.set_n_load_steps(50);
-        steady_solve.set_modify_only_aero_load(true);
 
+        //steady_solve.set_n_load_steps(50);
+        //steady_solve.set_modify_only_aero_load(true);
+
+        if (_if_neg_eig) {
+            obj = 1.e10;
+            for (unsigned int i=0; i<_n_ineq; i++)
+                fvals[i] = 1.e10;
+            return;
+        }
 
         //////////////////////////////////////////////////////////////////////
         // perform the modal analysis
@@ -1163,18 +1242,16 @@ public:  // parametric constructor
         // diagonal reduced order mass/stiffness operator. The eigenvalues
         // will also be independent of velocity.
 
-        libMesh::out <<
-                     "//////////////////////////////////////////////////////////////////////" << std::endl
-                    << "modal analysis " << std::endl
-                    << "//////////////////////////////////////////////////////////////////////" << std::endl;
+        libMesh::out << "** modal analysis **" << std::endl;
 
         _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
         _modal_assembly->set_base_solution(steady_sol_wo_aero);
         _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
+        _sys->eigen_solver->set_position_of_spectrum( libMesh::LARGEST_MAGNITUDE);
         _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
+        _modal_assembly->clear_base_solution();
         _modal_assembly->clear_discipline_and_system();
         _modal_elem_ops->clear_discipline_and_system();
-
 
 
         unsigned int
@@ -1235,9 +1312,34 @@ public:  // parametric constructor
             }
         }
 
+//        // solving the eig problem using smallest mag to obtain negative eigvalues
+//
+//        _sys->eigen_solver->set_position_of_spectrum( libMesh::SMALLEST_REAL );
+//        _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
+//
+//        unsigned int
+//                nconv_1 = std::min(_sys->get_n_converged_eigenvalues(),
+//                                   _sys->get_n_requested_eigenvalues());
+//        // vector of eigenvalues
+//        std::vector<Real> eig_vals_1(nconv_1);
+//
+//        for (unsigned int i = 0; i < nconv_1; i++) {
+//            // now write the eigenvalue
+//            Real
+//                    re = 0.,
+//                    im = 0.;
+//            _sys->get_eigenvalue(i, re, im);
+//
+//            eig_vals_1[i] = re;
+//        }
+//        _modal_assembly->clear_base_solution();
+//        _modal_assembly->clear_discipline_and_system();
+//        _modal_elem_ops->clear_discipline_and_system();
+
 
         //////////////////////////////////////////////////////////////////////
         // perform the flutter analysis
+        //////////////////////////////////////////////////////////////////////
 
         std::pair<bool, MAST::FlutterRootBase *> sol(false, nullptr);
 
@@ -1280,34 +1382,71 @@ public:  // parametric constructor
         // aero as the base solution for all the following computations
         // Otherwise, the equilibrium state is dependent on the velocity.
         if (!sol.second) {
-
             // velocity should be set to zero for all residual calculations
             (*_velocity) = 0.;
             steady_solve.solution() = steady_sol_wo_aero;
             *_sys->solution = steady_sol_wo_aero;
         }
 
+        //////////////////////////////////////////////////////////////////////
+        //  plot stress solution
+        //////////////////////////////////////////////////////////////////////
+        if (if_write_output) {
+
+            _stress_elem->set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
+            _stress_elem->set_participating_elements_to_all();
+            _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
+            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+            _stress_assembly->update_stress_strain_data(*_stress_elem, steady_sol_wo_aero);
+
+            libMesh::out << "Writing output to : output.exo" << std::endl;
+
+            //std::set<std::string> nm;
+            //nm.insert(_sys->name());
+            // write the solution for visualization
+            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
+                                                                *_eq_sys);//,&nm);
+
+            _stress_elem->clear_discipline_and_system();
+            _stress_assembly->clear_discipline_and_system();
+        }
+
+
+        if (sol.second && if_write_output) {
+
+            MAST::plot_structural_flutter_solution("structural_flutter_mode.exo",
+                                                   *_sys,
+                                                   sol.second->eig_vec_right,
+                                                   _basis);
+        }
+
+
 
 
         //////////////////////////////////////////////////////////////////////
-        // evaluate the stress constraint
-        //////////////////////////////////////////////////////////////////////
-
         // now calculate the stress output based on the velocity output
+        //////////////////////////////////////////////////////////////////////
+
         _nonlinear_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
-
-
-        // sys-> solution is where the solution is stored in this case solution is displacement
-        // and it is needed by the functionalily calculate_output in non_linear_assembly to calculate
-        // outputs[i] which is in this case stress at each element
-
-        //question how does _nonlinear_assembly knows that stress is the output required?
-        //         why are we repeating the same operation and storing it in _outputs[i] ?
-
-        for (int i=0; i < _outputs.size(); i++){
-            _nonlinear_assembly->calculate_output(*_sys->solution,*_outputs[i]);
+        for (int i=0; i < _mesh->n_elem() ; i++){
+            _nonlinear_assembly->calculate_output(steady_sol_wo_aero,*_outputs[i]);
         }
         _nonlinear_assembly->clear_discipline_and_system();
+
+
+//        std::string nm;
+//        std::ofstream out_stress;
+//        if (comm().rank() == 0)
+//            nm ="stresses.txt";
+//        //if (comm().rank() == 1)
+//         //   nm ="stressespr1.txt";
+//
+//        out_stress.open(nm, std::ofstream::out);
+//        out_stress << std::setw(10) << "stresses"
+//                   << std::endl;
+//        for (int di = 0; di < _outputs.size(); di++)
+//            out_stress << std::setw(10) << _outputs[di]->output_total()
+//                       << std::endl;
 
         //////////////////////////////////////////////////////////////////////
         // get the objective
@@ -1324,44 +1463,16 @@ public:  // parametric constructor
         // stress constraints
         //////////////////////////////////////////////////////////////////////
 
-        // we need to make sure that the stress functional in a parallel environment
-        // correspond to unique spots in the constraint function vector. Below,
-        // the output functionals are created for each local element. These will
-        // be mapped to unique spots by identifying the number of elements on each
-        // subdomain
-
-        std::vector<unsigned int>
-                beginning_elem_id(this->comm().size(), 0);
-        for (unsigned int i = 1; i < this->comm().size(); i++)
-            beginning_elem_id[i] = _mesh->n_elem_on_proc(i - 1);
-
-        // now use this info to identify the beginning elem id
-        for (unsigned int i = 2; i < this->comm().size(); i++)
-            beginning_elem_id[i] += beginning_elem_id[i - 1];
-
-        const unsigned int
-                my_id0 = beginning_elem_id[this->comm().rank()];
-
-
         // copy the element von Mises stress values as the functions
-        for (unsigned int i = 0; i < _outputs.size(); i++)
-            fvals[_n_eig + 1 + i + my_id0] = -1. +
-                                             _outputs[i]->output_total() /
+        for (unsigned int i = 0; i < _mesh->n_elem(); i++)
+            fvals[_n_eig + 1 + i ] = -1. +   _outputs[i]->output_total() /
                                              _stress_limit;
-
-        // now sum the value of the stress constraints, so that all ranks
-        // have the same values
-        for (unsigned int i = 0; i < _n_elems; i++)
-            this->comm().sum(fvals[_n_eig + 1 + i]);
-
 
         //////////////////////////////////////////////////////////////////////
         // evaluate the eigenvalue constraint
         //////////////////////////////////////////////////////////////////////
 
         if (nconv) {
-
-
             // set the eigenvalue constraints  -eig <= 0. scale
             // by an arbitrary 1/1.e7 factor
             for (unsigned int i = 0; i < nconv; i++)
@@ -1372,57 +1483,20 @@ public:  // parametric constructor
         // evaluate the flutter constraint
         //////////////////////////////////////////////////////////////////////
 
-        fvals[_n_eig + 0] = -100.;
+            fvals[_n_eig+0]  =  -100.;
 
 
 
-
-        if (if_write_output) {
-
-
-            // why do we need to update the stress here  ?
-
-//                for (int i=0; i < _outputs.size(); i++) {
-
-            MAST::StressStrainOutputBase stress_elem;
-
-            stress_elem.set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
-            stress_elem.set_participating_elements_to_all();
-
-            stress_elem.set_discipline_and_system(*_discipline,*_structural_sys);
-
-            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
-
-
-            _stress_assembly->update_stress_strain_data(stress_elem, *_sys->solution);
-//                }
-
-
-            libMesh::out << "Writing output to : output.exo" << std::endl;
-
-            std::set<std::string> nm;
-            nm.insert(_sys->name());
-            // write the solution for visualization
-            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
-                                                                *_eq_sys,
-                                                                &nm);
-
-
-        }
-
-
-        if (sol.second && if_write_output) {
-
-            MAST::plot_structural_flutter_solution("structural_flutter_mode.exo",
-                                                   *_sys,
-                                                   sol.second->eig_vec_right,
-                                                   _basis);
-        }
-
-
-
-
-
+//        std::ofstream out_f_vals;
+//        if (comm().rank() == 0) {
+//
+//            out_f_vals.open("f_vals.txt", std::ofstream::out);
+//            out_f_vals << std::setw(10) << "f_vals"
+//                       << std::endl;
+//            for (int di = 0; di < _n_ineq ; di++)
+//                out_f_vals << std::setw(10) << fvals[di]
+//                           << std::endl;
+//        }
 
 
         //////////////////////////////////////////////////////////////////
@@ -1459,10 +1533,9 @@ public:  // parametric constructor
             if_sens = (if_sens || eval_grads[i]);
 
 
-        //if_sens = false; //
-
         if (if_sens) {
 
+            libMesh::out << "** Sensitivity analysis **" << std::endl;
             // first initialize the gradient vector to zero
             std::fill(grads.begin(), grads.end(), 0.);
 
@@ -1470,11 +1543,6 @@ public:  // parametric constructor
             // indices used by GCMMA follow this rule:
             // grad_k = dfi/dxj  ,  where k = j*NFunc + i
             //////////////////////////////////////////////////////////////////
-
-            std::vector<std::pair<unsigned int, MAST::Parameter*>> params;
-            params.resize(1);
-
-            //MAST::Parameter* params;
 
 
             // copy the solution to be used for sensitivity
@@ -1488,11 +1556,8 @@ public:  // parametric constructor
             std::vector<Real> dsigma_dV(_outputs.size(), 0.);
 
             if (sol.second) {
-
-                params[0].second = _velocity;
-
-
-
+                libmesh_error();
+                //params[0].second = _velocity;
 
                 _nonlinear_assembly->set_discipline_and_system(*_discipline,
                                                                *_structural_sys);
@@ -1501,9 +1566,8 @@ public:  // parametric constructor
 
                 _sys->sensitivity_solve(*_nonlinear_elem_ops,
                                         *_nonlinear_assembly,
-                                        *params[0].second,
+                                        *_velocity,
                                         false);
-
 
                 dXdV = _sys->get_sensitivity_solution(0);
 
@@ -1516,41 +1580,35 @@ public:  // parametric constructor
                 for (int i=0; i < _outputs.size(); i++) {
                     _nonlinear_assembly->calculate_output_direct_sensitivity(*(_sys->solution),
                                                                              &dxdp,
-                                                                             *params[0].second,
+                                                                             *_velocity,
                                                                              *_outputs[i]);
                 }
                 for (unsigned int j = 0; j < _outputs.size(); j++)
-                    dsigma_dV[j] = _outputs[j]->output_sensitivity_total(*params[0].second);
+                    dsigma_dV[j] = _outputs[j]->output_sensitivity_total(*_velocity);
                             //von_Mises_p_norm_functional_sensitivity_for_all_elems
                             //(pval, _velocity);
 
                 _nonlinear_assembly->clear_discipline_and_system();
-            } else
-
+            }
+            else {
                 dXdV.zero();
+            }
 
+            _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
+            _modal_assembly->set_base_solution(*_sys->solution);
+            _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
+            _nonlinear_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+            _nonlinear_elem_ops->set_discipline_and_system(*_discipline,*_structural_sys);
 
             // we are going to choose to use one parametric sensitivity at a time
             for (unsigned int i = 0; i < _n_vars; i++) {
-
-                    params[0].second = _problem_parameters[i];
-
-                // copy the solution to be used for sensitivity
-                // If a flutter solution was found, then this depends on velocity.
-                // Otherwise, it is independent of velocity
-                *_sys->solution = steady_solve.solution();
+                libMesh::out << "design variable " << i << std::endl;
 
                 // iterate over each dv and calculate the sensitivity
                 libMesh::NumericVector<Real> &dXdp = _sys->add_sensitivity_solution(0);
                 dXdp.zero();
-                this->clear_stresss();
 
                 // sensitivity analysis
-                _nonlinear_assembly->set_discipline_and_system(*_discipline,
-                                                               *_structural_sys);
-                _nonlinear_elem_ops->set_discipline_and_system(*_discipline,
-                                                               *_structural_sys);
-
                 _sys->sensitivity_solve(*_nonlinear_elem_ops,
                                         *_nonlinear_assembly,
                                         *_problem_parameters[i],
@@ -1558,17 +1616,13 @@ public:  // parametric constructor
 
                 dXdp = _sys->get_sensitivity_solution(0);
 
-                for (unsigned int j = 0 ; j < _outputs.size(); j++){
+                for (unsigned int j = 0 ; j < _mesh->n_elem(); j++){
                     // evaluate sensitivity of the outputs
-
                     _nonlinear_assembly->calculate_output_direct_sensitivity(*(_sys->solution),
                                                                              &dXdp,
-                                                                             *_problem_parameters[i],
-                                                                             *_outputs[j]  );
+                                                                             *(_problem_parameters[i]),
+                                                                             *(_outputs[j])  );
                 }
-
-                _nonlinear_assembly->clear_discipline_and_system();
-                _nonlinear_elem_ops->clear_discipline_and_system();
 
                 // copy the sensitivity values in the output. This accounts for the
                 // sensitivity of state wrt parameter. However, if a flutter root
@@ -1576,12 +1630,11 @@ public:  // parametric constructor
                 // parameter. Hence, the total sensitivity of stress constraint
                 // would need to include the latter component, which was added
                 // above.
-                for (unsigned int j = 0; j < _outputs.size(); j++)
-                    grads[(i * _n_ineq) + (j + _n_eig + 1 + my_id0)] = _dv_scaling[i] / _stress_limit *
-                                                                       _outputs[j]->output_sensitivity_total(*_problem_parameters[i]);
+                for (unsigned int j = 0; j < _mesh->n_elem(); j++) {
+                    grads[(i * _n_ineq) + (j + _n_eig + 1 )] = _dv_scaling[i] / _stress_limit *
+                                    _outputs[j]->output_sensitivity_total(*(_problem_parameters[i]));
+                }
 
-                                                                               //von_Mises_p_norm_functional_sensitivity_for_all_elems
-                                                                               //(_p_val, _problem_parameters[i]);
 
                 // if all eigenvalues are positive, calculate at the sensitivity of
                 // flutter velocity
@@ -1590,11 +1643,14 @@ public:  // parametric constructor
                 // first block not used no flutter solution
 
                 if (if_all_eig_positive && sol.second) {
+                    libmesh_error();
+
                     //
                     //           g = V0/Vf - 1 <= 0
                     //   Hence, sensitivity is
                     //   -V0/Vf^2  dVf
                     //
+                    libmesh_error();
                     _fsi_assembly->set_base_solution(steady_solve.solution());
                     _fsi_assembly->set_base_solution(dXdp, true);
                     _fsi_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
@@ -1612,7 +1668,7 @@ public:  // parametric constructor
 
                     // add the partial derivative of stress due to velocity sensitivity
                     for (unsigned int j = 0; j < _outputs.size(); j++)
-                        grads[(i * _n_ineq) + (j + _n_eig + 1 + my_id0)] += _dv_scaling[i] / _stress_limit *
+                        grads[(i * _n_ineq) + (j + _n_eig + 1 )] += _dv_scaling[i] / _stress_limit *
                                                                             dsigma_dV[j] * sol.second->V_sens;
 
                     // The natural frequencies were calculated about a base solution
@@ -1637,47 +1693,51 @@ public:  // parametric constructor
 
                     _nonlinear_assembly->clear_discipline_and_system();
                     _nonlinear_elem_ops->clear_discipline_and_system();
-                } else
+                } else {
                     // if no root was found, then set the sensitivity to a zero value
                     grads[(i * _n_ineq) + (_n_eig + 0)] = 0.;
-
-
-                // now, sum the sensitivity of the stress function gradients
-                // so that all processors have the same values
-                for (unsigned int j = 0; j < _n_elems; j++)
-                    this->comm().sum(grads[(i * _n_ineq) + (j + _n_eig + 1)]);
+                }
 
 
                 // calculate the sensitivity of the eigenvalues
                 std::vector<Real> eig_sens(nconv);
-                _modal_assembly->set_base_solution(steady_sol_wo_aero);
+
+
                 _modal_assembly->set_base_solution(dXdp, true);
-                _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
-
-
-                _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
-                // this should not be necessary, but currently the eigenproblem sensitivity
-                // depends on availability of matrices before sensitivity
-
-                //_sys->assemble_eigensystem(); not needed anymore
-
-
                 _sys->eigenproblem_sensitivity_solve( *_modal_elem_ops,
                                                       *_modal_assembly,
                                                       *_problem_parameters[i],
                                                       eig_sens);
 
-                _modal_assembly->clear_discipline_and_system();
-                _modal_elem_ops->clear_discipline_and_system();
 
-                for (unsigned int j = 0; j < nconv; j++)
+                _modal_assembly->clear_base_solution(true);
+
+                for (unsigned int j = 0; j < nconv; j++) {
                     grads[(i * _n_ineq) + j] = -_dv_scaling[i] * eig_sens[j] / 1.e7;
+                }
             }
+
+            _nonlinear_assembly->clear_discipline_and_system();
+            _nonlinear_elem_ops->clear_discipline_and_system();
+            _modal_assembly->clear_discipline_and_system();
+            _modal_assembly->clear_base_solution();
+            _modal_elem_ops->clear_discipline_and_system();
+
+            libMesh::out << "** sensitivity analysis DONE **" << std::endl;
+
+//            std::ofstream out_grads;
+//            if (comm().rank() == 0) {
+//
+//                out_grads.open("grads.txt", std::ofstream::out);
+//                out_grads << std::setw(10) << "grads"
+//                           << std::endl;
+//                for (int di = 0; di < grads.size() ; di++)
+//                    out_grads << std::setw(10) << grads[di]
+//                               << std::endl;
+//            }
+
+
         }
-
-
-        _modal_assembly->clear_discipline_and_system();
-        _modal_elem_ops->clear_discipline_and_system();
     }
 
     void clear_stresss() {
@@ -1707,29 +1767,25 @@ public:  // parametric constructor
                     << std::setw(20) << (*_problem_parameters[i])() << std::endl;
 
 
+
+
         // write the solution for visualization
 
-        for (int i=0; i < _outputs.size(); i++) {
-            _stress_assembly->update_stress_strain_data(*_outputs[i], *_sys->solution);
-        }
+        _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
+        _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+        _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
 
+        libMesh::out << "Writing output to : output.exo" << std::endl;
         libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
                                                             *_eq_sys);
+
+        _stress_elem->clear_discipline_and_system();
+        _stress_assembly->clear_discipline_and_system();
 
         MAST::FunctionEvaluation::output(iter, x, obj, fval, if_write_to_optim_file);
     }
 
 
-    //MAST::FunctionEvaluation::funobj
-    //get_objective_evaluation_function() {
-    //   return stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj;
-    //}
-
-
-    //MAST::FunctionEvaluation::funcon
-    //get_constraint_evaluation_function() {
-    //   return stiffened_plate_thermally_stressed_piston_theory_flutter_optim_con;
-    //}
 
     class StiffenedPlateSteadySolverInterface:
             public MAST::FlutterSolverBase::SteadySolver {
@@ -1795,13 +1851,15 @@ public:  // parametric constructor
         virtual const libMesh::NumericVector<Real>&
         solve() {
 
+            // create a vector to store the solution
             libMesh::NumericVector<Real>& sol = _obj._sys->get_vector("base_solution");
             *_obj._sys->solution = sol;
 
-            // now do the solve
+
             libmesh_assert(_obj._initialized);
 
-            bool if_vk = (_obj._p_card_plate->strain_type() == MAST::NONLINEAR_STRAIN);
+            // check if the system solved is linear or nonlinear
+            bool if_vk = _obj._if_vk;
 
             ///////////////////////////////////////////////////////////////
             // first, solve the quasi-steady problem
@@ -1816,8 +1874,17 @@ public:  // parametric constructor
                     V0      = (*_obj._velocity)(),
                     p0      = (*_obj._p_cav)();
 
-            // zero the solution before solving
+
+            //////////////////////////////////////////////////////////////////////
+            libMesh::out << " clear the solution " << std::endl;
+            // first zero the solution
+            _obj._sys->solution->zero();
+            libMesh::out << " solution cleared" << std::endl;
+            //////////////////////////////////////////////////////////////////////
+            libMesh::out << " clear stress " << std::endl;
             _obj.clear_stresss();
+            libMesh::out << " stress cleared" << std::endl;
+
 
             _obj._nonlinear_assembly->set_discipline_and_system(*_obj._discipline,
                                                                 *_obj._structural_sys);
@@ -1836,11 +1903,10 @@ public:  // parametric constructor
 
             if (!if_continuation_solver) {
 
-                //            // apply scaling on thermal jaobian
+                // apply scaling on thermal jaobian
                 MAST::Examples::ThermalJacobianScaling
                         *jac_scaling =  dynamic_cast<MAST::Examples::ThermalJacobianScaling*>(_obj._jac_scaling);
                 jac_scaling->set_assembly(*_obj._nonlinear_assembly);
-
 
                 // now iterate over the load steps
                 for (unsigned int i = 0; i < n_steps; i++) {
@@ -1865,7 +1931,6 @@ public:  // parametric constructor
                             << "  : p = " << (*_obj._p_cav)()
                             << "  : V = " << (*_obj._velocity)()
                             << std::endl;
-
 
 
                     // we can solve the problem using solve fiunctionality in sys by giving it
@@ -1920,27 +1985,16 @@ public:  // parametric constructor
                         nd  = *n_it;
                         pt0 = *nd;
                     }
-
-//                    // compute angle based on y-location
-//                    if (R > 0.) {
-//                        Real a  = asin(((**n_it)(1)-(_obj._width)*.5)/R);
-//                        (**n_it)(2) = cos(a)*R;
-//                    }
                 }
 
-                std::cout << *nd << std::endl;
+                // std::cout << *nd << std::endl;
 
                 Real
                         max_temp = (*_obj._temp)(),
-                //dt = 1./(n_temp_steps+n_press_steps-1.);
                         dt =1;
 
                 Real init_step      = _obj._input("init_step", "init_temperature  for c-s",  (*_obj._temp)()/50);
                 (*_obj._temp)() = init_step;
-
-//                MAST::Parameter
-//                        init_temperature("T",     _obj._input( "temp",  "initial temperature",  1.0e-6));
-
 
                 const unsigned int
                         dof_num = nd->dof_number(0, 2, 0);
@@ -1970,7 +2024,7 @@ public:  // parametric constructor
                             << std::setw(25) << "pressure";
 
                     for (int di = 0; di < _obj._n_eig; di++)
-                        out_eig  << std::setw(25) << "Re of eigenvalue" << di+1;
+                        out_eig  << std::setw(25) << "Re_of_eigenvalue" << di+1;
 
                     out_eig << std::endl;
                 }
@@ -1986,6 +2040,11 @@ public:  // parametric constructor
                     solver.schur_factorization = _obj._input("if_schur_factorization", "use Schur-factorization in continuation solver", true);
                     solver.min_step            = _obj._input("min_step", "minimum arc-length step-size for continuation solver",          10.);
                     solver.max_it              = _obj._input("max_it", "max nr iterations",          10);
+                    solver.max_step            = _obj._input("max_step", "maximum arc-length step-size for continuation solver",   20.);
+                    solver.step_desired_iters  = _obj._input("step_desired_iters", "maximum arc-length step-size for continuation solver",5);
+
+
+
                     // specify temperature as the load parameter to be changed per
                     // load step
                     solver.set_assembly_and_load_parameter(*_obj._nonlinear_elem_ops,
@@ -1998,8 +2057,9 @@ public:  // parametric constructor
                     // with the search direction defined, we define the arc length
                     // per load step to be a factor of 2 greater than the initial step.
 
-
                     solver.arc_length *= 2;
+
+                    std::vector<Real> eig_vec(_obj._n_eig, 0);
 
                     for (unsigned int i=0; i<n_temp_steps; i++) {
 
@@ -2008,6 +2068,7 @@ public:  // parametric constructor
                                 << "  iter: " << i
                                 << "  temperature: " << (*_obj._temp)()
                                 << "  pressure: "    << (*_obj._p_cav)() << std::endl;
+
 
                         // get the value of the node at the center of the plate for output
                         _obj._sys->solution->localize(vec1, vec2);
@@ -2021,7 +2082,9 @@ public:  // parametric constructor
                                     << std::setw(25) << vec1[0] << std::endl;
                         }
 
-                        if (i%2== 0){
+
+                        if (true //i%2== 0
+                                ){
                             _obj._modal_assembly->set_base_solution(*_obj._sys->solution);
                             _obj._sys->eigenproblem_solve( *_obj._modal_elem_ops, *_obj._modal_assembly);
                             unsigned int
@@ -2035,38 +2098,53 @@ public:  // parametric constructor
                                         << std::setw(25) << (*_obj._p_cav)();
                             }
 
-
+                            std::fill(eig_vec.begin(), eig_vec.end(), 0.);
                             for (int dj =0 ; dj < nconv; dj++){
                                 // now write the eigenvalue
                                 Real
                                         re = 0.,
                                         im = 0.;
                                 _obj._sys->get_eigenvalue(dj, re, im);
+                                eig_vec[dj] = re;
 
                                 if (_obj.comm().rank() == 0) {
                                     out_eig  << std::setw(25) << re  ;
                                     }
-                                }
+                            }
+
                             if (nconv < _obj._n_eig) {
                                 int diff_eigs = _obj._n_eig - nconv ;
                                 for (int di = 0; di < diff_eigs; di++)
                                     out_eig << std::setw(25) << "N/A";
                             }
+
                             out_eig << std::endl;
                             _obj._modal_assembly->clear_base_solution();
                         }
+
+
                         _obj._sys->time += dt;
-
-
 //                         write the current solution to the exodus file for
 //                         visualization
                         writer->write_timestep("sol_continuation_solver.exo",
                                                *_obj._eq_sys,
                                                  i+1,
-                                               _obj._sys->time);
+                                                 i+1);//,
+                                              // _obj._sys->time);
 
 
+                        // if a negative eigenvalue is detected
+                        // change flag to true to increase obj and fvals
+                        // and solve the system one last time and exit
+                        if ( (eig_vec[0] < 0.0) && ( (*_obj._temp)() < max_temp) )  {
+                            _obj._if_neg_eig = true;
+                            libMesh::out << " negative eigenvalue found" << std::endl;
+                            (*_obj._temp)() = max_temp;
+                            break;
+                        }
 
+                        // if the temperature given by the solver is bigger than tmax
+                        // go back to tmax and solve the system one more time and exit
                         if ((*_obj._temp)() > max_temp) {
                             (*_obj._temp)() = max_temp;
                             _obj._sys->solve(*_obj._nonlinear_elem_ops,
@@ -2074,11 +2152,10 @@ public:  // parametric constructor
                             break;
                         }
                     }
+                    // clear assembly and loading parameter from continuation solver
+                    solver.clear_assembly_and_load_parameters();
                 }
-
-
             }
-
 
 
             // copy the solution to the base solution vector
@@ -2142,13 +2219,13 @@ int main(int argc, char* argv[]) {
 
     bool         verify_grads  = _input("verify_grads",  "verify the gradients", false);
 
-
+    //verify_grads = true;
 
     // create and attach sizing optimization object
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization func_eval(init.comm(), _input);
 
-    //if (__init->comm().rank() == 0)
-      //  func_eval.set_output_file("optimization_output.txt");
+    if (init.comm().rank() == 0)
+        func_eval.set_output_file("optimization_output.txt");
 
     __my_func_eval = &func_eval;
 
@@ -2198,121 +2275,121 @@ int main(int argc, char* argv[]) {
 
 
 
-void
-stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj(int*    mode,
-                                                                   int*    n,
-                                                                   double* x,
-                                                                   double* f,
-                                                                   double* g,
-                                                                   int*    nstate) {
-
-
-    // make sure that the global variable has been setup
-    libmesh_assert(__my_func_eval);
-
-    // initialize the local variables
-    Real
-            obj = 0.;
-
-    unsigned int
-            n_vars  =  __my_func_eval->n_vars(),
-            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
-
-    libmesh_assert_equal_to(*n, n_vars);
-
-    std::vector<Real>
-            dvars   (*n,    0.),
-            obj_grad(*n,    0.),
-            fvals   (n_con, 0.),
-            grads   (0);
-
-    std::vector<bool>
-            eval_grads(n_con);
-    std::fill(eval_grads.begin(), eval_grads.end(), false);
-
-    // copy the dvars
-    for (unsigned int i=0; i<n_vars; i++)
-        dvars[i] = x[i];
-
-
-    __my_func_eval->evaluate(dvars,
-                             obj,
-                             true,       // request the derivatives of obj
-                             obj_grad,
-                             fvals,
-                             eval_grads,
-                             grads);
-
-
-    // now copy them back as necessary
-    *f  = obj;
-    for (unsigned int i=0; i<n_vars; i++)
-        g[i] = obj_grad[i];
-}
-
-
-void
-stiffened_plate_thermally_stressed_piston_theory_flutter_optim_con(int*    mode,
-                                                                   int*    ncnln,
-                                                                   int*    n,
-                                                                   int*    ldJ,
-                                                                   int*    needc,
-                                                                   double* x,
-                                                                   double* c,
-                                                                   double* cJac,
-                                                                   int*    nstate) {
-
-
-    // make sure that the global variable has been setup
-    libmesh_assert(__my_func_eval);
-
-    // initialize the local variables
-    Real
-            obj = 0.;
-
-    unsigned int
-            n_vars  =  __my_func_eval->n_vars(),
-            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
-
-    libmesh_assert_equal_to(    *n, n_vars);
-    libmesh_assert_equal_to(*ncnln, n_con);
-
-    std::vector<Real>
-            dvars   (*n,    0.),
-            obj_grad(*n,    0.),
-            fvals   (n_con, 0.),
-            grads   (n_vars*n_con, 0.);
-
-    std::vector<bool>
-            eval_grads(n_con);
-    std::fill(eval_grads.begin(), eval_grads.end(), true);
-
-    // copy the dvars
-    for (unsigned int i=0; i<n_vars; i++)
-        dvars[i] = x[i];
-
-
-    __my_func_eval->evaluate(dvars,
-                             obj,
-                             true,       // request the derivatives of obj
-                             obj_grad,
-                             fvals,
-                             eval_grads,
-                             grads);
-
-
-    // now copy them back as necessary
-
-    // first the constraint functions
-    for (unsigned int i=0; i<n_con; i++)
-        c[i] = fvals[i];
-
-    // next, the constraint gradients
-    for (unsigned int i=0; i<n_con*n_vars; i++)
-        cJac[i] = grads[i];
-
-
-}
+//void
+//stiffened_plate_thermally_stressed_piston_theory_flutter_optim_obj(int*    mode,
+//                                                                   int*    n,
+//                                                                   double* x,
+//                                                                   double* f,
+//                                                                   double* g,
+//                                                                   int*    nstate) {
+//
+//
+//    // make sure that the global variable has been setup
+//    libmesh_assert(__my_func_eval);
+//
+//    // initialize the local variables
+//    Real
+//            obj = 0.;
+//
+//    unsigned int
+//            n_vars  =  __my_func_eval->n_vars(),
+//            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
+//
+//    libmesh_assert_equal_to(*n, n_vars);
+//
+//    std::vector<Real>
+//            dvars   (*n,    0.),
+//            obj_grad(*n,    0.),
+//            fvals   (n_con, 0.),
+//            grads   (0);
+//
+//    std::vector<bool>
+//            eval_grads(n_con);
+//    std::fill(eval_grads.begin(), eval_grads.end(), false);
+//
+//    // copy the dvars
+//    for (unsigned int i=0; i<n_vars; i++)
+//        dvars[i] = x[i];
+//
+//
+//    __my_func_eval->evaluate(dvars,
+//                             obj,
+//                             true,       // request the derivatives of obj
+//                             obj_grad,
+//                             fvals,
+//                             eval_grads,
+//                             grads);
+//
+//
+//    // now copy them back as necessary
+//    *f  = obj;
+//    for (unsigned int i=0; i<n_vars; i++)
+//        g[i] = obj_grad[i];
+//}
+//
+//
+//void
+//stiffened_plate_thermally_stressed_piston_theory_flutter_optim_con(int*    mode,
+//                                                                   int*    ncnln,
+//                                                                   int*    n,
+//                                                                   int*    ldJ,
+//                                                                   int*    needc,
+//                                                                   double* x,
+//                                                                   double* c,
+//                                                                   double* cJac,
+//                                                                   int*    nstate) {
+//
+//
+//    // make sure that the global variable has been setup
+//    libmesh_assert(__my_func_eval);
+//
+//    // initialize the local variables
+//    Real
+//            obj = 0.;
+//
+//    unsigned int
+//            n_vars  =  __my_func_eval->n_vars(),
+//            n_con   =  __my_func_eval->n_eq()+__my_func_eval->n_ineq();
+//
+//    libmesh_assert_equal_to(    *n, n_vars);
+//    libmesh_assert_equal_to(*ncnln, n_con);
+//
+//    std::vector<Real>
+//            dvars   (*n,    0.),
+//            obj_grad(*n,    0.),
+//            fvals   (n_con, 0.),
+//            grads   (n_vars*n_con, 0.);
+//
+//    std::vector<bool>
+//            eval_grads(n_con);
+//    std::fill(eval_grads.begin(), eval_grads.end(), true);
+//
+//    // copy the dvars
+//    for (unsigned int i=0; i<n_vars; i++)
+//        dvars[i] = x[i];
+//
+//
+//    __my_func_eval->evaluate(dvars,
+//                             obj,
+//                             true,       // request the derivatives of obj
+//                             obj_grad,
+//                             fvals,
+//                             eval_grads,
+//                             grads);
+//
+//
+//    // now copy them back as necessary
+//
+//    // first the constraint functions
+//    for (unsigned int i=0; i<n_con; i++)
+//        c[i] = fvals[i];
+//
+//    // next, the constraint gradients
+//    for (unsigned int i=0; i<n_con*n_vars; i++)
+//        cJac[i] = grads[i];
+//
+//
+//}
 
 
 

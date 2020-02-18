@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -87,6 +87,16 @@ namespace MAST {
                                       bool base_sol,
                                       RealMatrixX& mat_A,
                                       RealMatrixX& mat_B);
+
+        /*!
+         *   performs the element topology sensitivity calculations over \p elem.
+         */
+        virtual void
+        elem_topology_sensitivity_calculations(const MAST::FunctionBase& f,
+                                               bool base_sol,
+                                               RealMatrixX& mat_A,
+                                               RealMatrixX& mat_B);
+
 
         /*!
          *   performs the element topology sensitivity calculations over \p elem.

@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -29,6 +29,8 @@ namespace MAST {
     enum BoundaryConditionType {
         
         SURFACE_PRESSURE,
+        SURFACE_TRACTION,
+        SURFACE_TRACTION_SHIFTED_BOUNDARY,
         POINT_LOAD,
         POINT_MOMENT,
         PISTON_THEORY,
@@ -44,7 +46,8 @@ namespace MAST {
         FAR_FIELD,
         EXHAUST,
         ISOTHERMAL,
-        ADIABATIC
+        ADIABATIC,
+        BOUNDARY_VELOCITY
     };
     
     

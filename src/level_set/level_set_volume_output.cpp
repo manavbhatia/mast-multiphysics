@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -20,17 +20,16 @@
 // MAST includes
 #include "level_set/level_set_volume_output.h"
 #include "level_set/level_set_elem_base.h"
-#include "level_set/level_set_intersection.h"
 #include "level_set/level_set_intersected_elem.h"
 #include "base/system_initialization.h"
 #include "base/nonlinear_system.h"
 #include "base/assembly_base.h"
 #include "base/function_base.h"
 
+#include "libmesh/parallel.h"
 
-MAST::LevelSetVolume::LevelSetVolume(MAST::LevelSetIntersection& intersection):
+MAST::LevelSetVolume::LevelSetVolume():
 MAST::OutputAssemblyElemOperations(),
-_intersection  (intersection),
 _vol           (0.),
 _dvol_dp       (0.) {
     
@@ -52,7 +51,7 @@ MAST::LevelSetVolume::init(const MAST::GeomElem& elem) {
     libmesh_assert(_system);
     libmesh_assert(_assembly);
     
-    _physics_elem = new MAST::LevelSetElementBase(*_system, *_assembly, elem);
+    _physics_elem = new MAST::LevelSetElementBase(*_system, elem);
 }
 
 
@@ -166,6 +165,14 @@ MAST::LevelSetVolume::evaluate_sensitivity(const MAST::FunctionBase& f) {
     
     // nothing to be done here, since this is a topology quantity and
     // the sensitivity is calculated for topology variables
+}
+
+
+
+void
+MAST::LevelSetVolume::evaluate_topology_sensitivity(const MAST::FunctionBase& f) {
+    
+    libmesh_assert(false);
 }
 
 

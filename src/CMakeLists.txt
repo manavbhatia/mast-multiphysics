@@ -10,6 +10,7 @@ add_library(mast SHARED)
 # Add include directories.
 target_include_directories(mast
         PUBLIC
+            ${CMAKE_SOURCE_DIR}/contrib
             ${CMAKE_CURRENT_LIST_DIR}
             ${MPI_CXX_INCLUDE_PATH}
             ${PETSc_INCLUDE_DIRS}
@@ -36,7 +37,9 @@ target_link_libraries(mast
             ${Boost_FILESYSTEM_LIBRARY}
             ${Boost_SYSTEM_LIBRARY}
             debug ${libMesh_dbg_LIBRARIES}
+            debug ${timpi_dbg_LIBRARIES}
             optimized ${libMesh_opt_LIBRARIES}
+            optimized ${timpi_opt_LIBRARIES}
             ${LIBGFORTRAN_LIBRARIES})
 
 # NOTE: Use of PUBLIC keyword above means other CMake target (like an example)
@@ -65,6 +68,13 @@ add_subdirectory(utility)
 #       This would enable us to call target_link_libraries() closer to to the
 #       code that is using it. (There is a documented limitation with CMake
 #       that prevents this with using add_subdirectory).
+
+# Add third party contrib folder sources.
+target_sources(mast
+    PUBLIC
+        ${CMAKE_SOURCE_DIR}/contrib/libfort/fort.c
+        ${CMAKE_SOURCE_DIR}/contrib/libfort/fort.h
+        ${CMAKE_SOURCE_DIR}/contrib/libfort/fort.hpp)
 
 # MAST library installation.
 install(TARGETS mast

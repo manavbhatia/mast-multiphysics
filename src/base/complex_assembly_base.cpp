@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -38,6 +38,7 @@
 #include "libmesh/dof_map.h"
 #include "libmesh/petsc_vector.h"
 #include "libmesh/petsc_matrix.h"
+#include "libmesh/libmesh_logging.h"
 
 
 

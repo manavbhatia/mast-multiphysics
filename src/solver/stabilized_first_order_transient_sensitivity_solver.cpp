@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -29,6 +29,7 @@
 #include "base/output_assembly_elem_operations.h"
 
 // libMesh includes
+#include "libmesh/libmesh_logging.h"
 #include "libmesh/sparse_matrix.h"
 #include "libmesh/numeric_vector.h"
 #include "libmesh/linear_solver.h"
@@ -144,6 +145,7 @@ sensitivity_solve(MAST::AssemblyBase& assembly,
         std::ostringstream oss;
         oss << _sol_name_root << _index1;
         sys.read_in_vector(sol, _sol_dir, oss.str(), true);
+        sys.update();
 
         // assemble the Jacobian matrix
         _assemble_mass = false;
@@ -284,7 +286,8 @@ evaluate_q_sens_for_previous_interval(MAST::AssemblyBase& assembly,
         std::ostringstream oss;
         oss << _sol_name_root << _index1;
         sys.read_in_vector(sol, _sol_dir, oss.str(), true);
-        
+        sys.update();
+
         sys.time  = _t0 + this->dt * ( i - _index0);
         
         eta = (sys.time-_t0)/(t1-_t0);

@@ -1,6 +1,6 @@
 /*
  * MAST: Multidisciplinary-design Adaptation and Sensitivity Toolkit
- * Copyright (C) 2013-2019  Manav Bhatia
+ * Copyright (C) 2013-2020  Manav Bhatia and MAST authors
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -111,11 +111,11 @@ set_elem_operation_object(MAST::TransientAssemblyElemOperations &assembly_ops) {
             nm = "transient_solution_";
             nm += iter.str();
             sys.add_vector(nm, true, libMesh::GHOSTED);
-
-            nm = "transient_solution_sensitivity_";
-            nm += iter.str();
-            sys.add_vector(nm, true, libMesh::GHOSTED);
         }
+
+        nm = "transient_solution_sensitivity_";
+        nm += iter.str();
+        sys.add_vector(nm, true, libMesh::GHOSTED);
 
         // add the velocity
         nm = "transient_velocity_";
@@ -226,15 +226,11 @@ MAST::TransientSolverBase::solution_sensitivity(unsigned int prev_iter) const {
     std::ostringstream oss;
     oss << prev_iter;
 
-    if (prev_iter) {
-        // get references to the solution
-        std::string
-        nm = "transient_solution_sensitivity_" + oss.str();
-        
-        return _system->system().get_vector(nm);
-    }
-    else
-        return _system->system().add_sensitivity_solution();
+    // get references to the solution
+    std::string
+    nm = "transient_solution_sensitivity_" + oss.str();
+    
+    return _system->system().get_vector(nm);
 }
 
 
@@ -411,20 +407,11 @@ solve_highest_derivative_and_advance_time_step(MAST::AssemblyBase& assembly) {
     // next, move all the solutions and velocities into older
     // time step locations
     for (unsigned int i=_n_iters_to_store-1; i>0; i--) {
-        this->solution(i).zero();
-        this->solution(i).add(1., this->solution(i-1));
-        this->solution(i).close();
+        this->solution(i) = this->solution(i-1);
+        this->velocity(i) = this->velocity(i-1);
         
-        this->velocity(i).zero();
-        this->velocity(i).add(1., this->velocity(i-1));
-        this->velocity(i).close();
-        
-        if (_ode_order > 1) {
-            
-            this->acceleration(i).zero();
-            this->acceleration(i).add(1., this->acceleration(i-1));
-            this->acceleration(i).close();
-        }
+        if (_ode_order > 1)
+            this->acceleration(i) = this->acceleration(i-1);
     }
     
     // finally, update the system time
@@ -506,20 +493,11 @@ solve_highest_derivative_and_advance_time_step_with_sensitivity(MAST::AssemblyBa
     // time step locations
     for (unsigned int i=_n_iters_to_store-1; i>0; i--) {
         
-        this->solution_sensitivity(i).zero();
-        this->solution_sensitivity(i).add(1., this->solution_sensitivity(i-1));
-        this->solution_sensitivity(i).close();
+        this->solution_sensitivity(i) = this->solution_sensitivity(i-1);
+        this->velocity_sensitivity(i) = this->velocity_sensitivity(i-1);
         
-        this->velocity_sensitivity(i).zero();
-        this->velocity_sensitivity(i).add(1., this->velocity_sensitivity(i-1));
-        this->velocity_sensitivity(i).close();
-        
-        if (_ode_order > 1) {
-            
-            this->acceleration_sensitivity(i).zero();
-            this->acceleration_sensitivity(i).add(1., this->acceleration_sensitivity(i-1));
-            this->acceleration_sensitivity(i).close();
-        }
+        if (_ode_order > 1)
+            this->acceleration_sensitivity(i) = this->acceleration_sensitivity(i-1);
     }
     
     // finally, update the system time
@@ -578,7 +556,9 @@ build_local_quantities(const libMesh::NumericVector<Real>& current_sol,
 
                 if (!_if_highest_derivative_solution)
                     // calculate the velocity and localize it
-                    update_velocity(vel, current_sol);
+                    // we use the localized sol since libMesh vector
+                    // algebra needs it for ghosted vectors.
+                    update_velocity(vel, *sol[0]);
                 
                 vel.localize(*sol[i], send_list);
             }
@@ -591,7 +571,9 @@ build_local_quantities(const libMesh::NumericVector<Real>& current_sol,
                 
                 if (!_if_highest_derivative_solution)
                     // calculate the acceleration and localize it
-                    update_acceleration(acc, current_sol);
+                    // we use the localized sol since libMesh vector
+                    // algebra needs it for ghosted vectors.
+                    update_acceleration(acc, *sol[0]);
                 
                 acc.localize(*sol[i], send_list);
             }
@@ -767,20 +749,11 @@ MAST::TransientSolverBase::advance_time_step() {
     // next, move all the solutions and velocities into older
     // time step locations
     for (unsigned int i=_n_iters_to_store-1; i>0; i--) {
-        this->solution(i).zero();
-        this->solution(i).add(1., this->solution(i-1));
-        this->solution(i).close();
+        this->solution(i) = this->solution(i-1);
+        this->velocity(i) = this->velocity(i-1);
         
-        this->velocity(i).zero();
-        this->velocity(i).add(1., this->velocity(i-1));
-        this->velocity(i).close();
-        
-        if (_ode_order > 1) {
-            
-            this->acceleration(i).zero();
-            this->acceleration(i).add(1., this->acceleration(i-1));
-            this->acceleration(i).close();
-        }
+        if (_ode_order > 1)
+            this->acceleration(i) = this->acceleration(i-1);
     }
 
     // finally, update the system time
@@ -805,20 +778,11 @@ MAST::TransientSolverBase::advance_time_step_with_sensitivity() {
     // next, move all the solutions and velocities into older
     // time step locations
     for (unsigned int i=_n_iters_to_store-1; i>0; i--) {
-        this->solution_sensitivity(i).zero();
-        this->solution_sensitivity(i).add(1., this->solution_sensitivity(i-1));
-        this->solution_sensitivity(i).close();
+        this->solution_sensitivity(i) = this->solution_sensitivity(i-1);
+        this->velocity_sensitivity(i) = this->velocity_sensitivity(i-1);
         
-        this->velocity_sensitivity(i).zero();
-        this->velocity_sensitivity(i).add(1., this->velocity_sensitivity(i-1));
-        this->velocity_sensitivity(i).close();
-        
-        if (_ode_order > 1) {
-            
-            this->acceleration_sensitivity(i).zero();
-            this->acceleration_sensitivity(i).add(1., this->acceleration_sensitivity(i-1));
-            this->acceleration_sensitivity(i).close();
-        }
+        if (_ode_order > 1)
+            this->acceleration_sensitivity(i) = this->acceleration_sensitivity(i-1);
     }
     
     // finally, update the system time
