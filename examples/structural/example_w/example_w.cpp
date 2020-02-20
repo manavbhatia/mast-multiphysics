@@ -726,9 +726,10 @@ public:  // parametric constructor
     void _init_dv_vector() {
         // initialize the dv vector data (dv = design variables)
         const Real
-                th_l = _input("thickness_lower", "", 0.001),
-                th_u = _input("thickness_upper", "", 0.2),
-                th = _input("thickness", "", 0.2);
+                th_l     = _input("thickness_lower", "", 0.001),
+                th_u     = _input("thickness_upper", "", 0.2),
+                th       = _input("thickness", "", 0.2),
+		th_stiff = _input("thickness_stiff","",0.2);
 
         //distance btw stations
         _dx = _length / (_n_dv_stations_x - 1);
@@ -742,7 +743,7 @@ public:  // parametric constructor
         // design variables for the thickness values
         for (unsigned int i = 0; i < _n_vars; i++) {
 
-         //   _dv_init[i] = _input("dv_init", "", th / th_u, i);
+            //_dv_init[i] = _input("dv_init", "", th / th_u, i);
             _dv_low[i] = th_l / th_u;
             _dv_scaling[i] = th_u;
         }
@@ -753,7 +754,7 @@ public:  // parametric constructor
 
 
         for (unsigned int i = _n_dv_stations_x; i < _n_vars; i++) {
-            _dv_init[i] = _input("dv_init", "", th_u / th_u, i);
+            _dv_init[i] = _input("dv_init", "", th_stiff / th_u, i);
         }
 
 //        _dv_init     [          0 ] =    0.000756353417639/ th_u;
