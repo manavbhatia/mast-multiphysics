@@ -249,6 +249,7 @@ protected:      // protected member variables
             *_gamma_air;
 
     MAST::ConstantFieldFunction
+            *_zero_f,
             *_velocity_f,
             *_mach_f,
             *_rho_air_f,
@@ -347,6 +348,7 @@ public:  // parametric constructor
 
             _nsp(nullptr),
             _zero(nullptr),
+            _zero_f(nullptr),
             _temp(nullptr),
             _p_cav(nullptr),
             _mach(nullptr),
@@ -363,10 +365,7 @@ public:  // parametric constructor
             _if_continuation_solver(false),
             _if_neg_eig(false)
     {
-        libmesh_assert(!_initialized);
 
-        _if_vk = _input("nonlinear", "linear or nonlinear", false);
-        _if_continuation_solver = _input("if_continuation_solver", "continuation solver on/off flag", false);
 
         libMesh::out
                 << "//////////////////////////////////////////////////////////////////" << std::endl
@@ -379,6 +378,11 @@ public:  // parametric constructor
                 << " Output per iteration is written to optimization_output.txt." << std::endl
                 << "//////////////////////////////////////////////////////////////////" << std::endl
                 << std::endl;
+
+        libmesh_assert(!_initialized);
+
+        _if_vk = _input("nonlinear", "linear or nonlinear", false);
+        _if_continuation_solver = _input("if_continuation_solver", "continuation solver on/off flag", false);
 
         // number of load steps
         _n_load_steps = _input("n_load_steps", " ", 10);
@@ -597,17 +601,18 @@ public:  // parametric constructor
 
 
 
-        _n_plate_elems = _n_divs_x * (_n_stiff + 1) * _n_divs_between_stiff;
+//        _n_plate_elems = _n_divs_x * (_n_stiff + 1) * _n_divs_between_stiff;
 
         if (e_type == libMesh::TRI3)
             _n_plate_elems *= 2;
 
-        _n_elems_per_stiff = _n_divs_x;
-        _n_elems = _n_plate_elems + _n_stiff * _n_elems_per_stiff;
+//        _n_elems_per_stiff = _n_divs_x;
+//        _n_elems = _n_plate_elems + _n_stiff * _n_elems_per_stiff;
 
 
-            MAST::HatStiffenedPanelMesh panel_mesh;
-            panel_mesh.init(_n_stiff,        // n_stiff,
+
+        MAST::HatStiffenedPanelMesh panel_mesh;
+        panel_mesh.init(_n_stiff,        // n_stiff,
                             _n_divs_x,       // n_x_divs
                             _n_divs_x,       // n_y_divs_on_stiffeners
                             _n_divs_between_stiff,       // n_y_divs_between_stiffeners
@@ -629,7 +634,7 @@ public:  // parametric constructor
         libMesh::out
                 << "//////////////////////////////////////////////////////////////////" << std::endl
                                                                                         << std::endl;
-
+        _n_elems = _mesh->n_elem();
     }
 
 
@@ -645,13 +650,16 @@ public:  // parametric constructor
         // create the libmesh system
         _sys = &(_eq_sys->add_system<MAST::NonlinearSystem>("structural"));
 
+        // FEType to initialize the system
+        libMesh::FEType fetype (libMesh::FIRST, libMesh::LAGRANGE);
+
         // specifying the type of eigenproblem we'd like to solve
         _sys->set_eigenproblem_type(libMesh::GHEP);
 
         // initialize the system to the right set of variables
         _structural_sys = new MAST::StructuralSystemInitialization(*_sys,
                                                                    _sys->name(),
-                                                                   _fetype);
+                                                                   fetype);
 
         _discipline = new MAST::PhysicsDisciplineBase(*_eq_sys);
 
@@ -850,6 +858,7 @@ public:  // parametric constructor
         alpha = new MAST::Parameter("alpha", _input("alpha", "", 2.5e-5));
         rho = new MAST::Parameter("rho", _input("rho", "", 2700.0));
 
+
         E_f = new MAST::ConstantFieldFunction("E", *E);
         nu_f = new MAST::ConstantFieldFunction("nu", *nu);
         kappa_f = new MAST::ConstantFieldFunction("kappa", *kappa);
@@ -867,7 +876,6 @@ public:  // parametric constructor
         _m_card->add(*alpha_f);
 
     }
-
 
     void _init_section_property_stiffener_hat() {
 
@@ -923,7 +931,7 @@ public:  // parametric constructor
 
             _th_stiff_f[i]   = new MAST::MultilinearInterpolation("h", _thy_station_vals);
             _hoff_stiff_f[i] = new MAST::SectionOffset("off",
-                                                        *_th_stiff_f[i],
+                                                        *_zero_f,
                                                         0.);
 
             _p_card_stiff[i] = new MAST::Solid2DSectionElementPropertyCard;
@@ -986,6 +994,7 @@ public:  // parametric constructor
         p_cav_f = new MAST::ConstantFieldFunction("pressure", *_p_cav);
 
         _zero = new MAST::Parameter("zero", 0.);
+        _zero_f =  new MAST::ConstantFieldFunction("zero_constant_field", *_zero);
 
         ref_temp_f = new MAST::ConstantFieldFunction("ref_temperature", *_zero);
         _temp       = new MAST::Parameter("temperature", _input("temp", "", 10.));
@@ -1181,14 +1190,8 @@ public:  // parametric constructor
         }
 
         steady_solve.solve();
-
-//        libmesh_error();
-
-        // us this solution as the base solution later if no flutter is found.
-        //libMesh::NumericVector<Real> &
-        //        steady_sol_wo_aero = _sys->add_vector("steady_sol_wo_aero");
-        // steady_sol_wo_aero = *_sys->solution;
-
+        libMesh::NumericVector<Real> & steady_sol_wo_aero = _sys->add_vector("steady_sol_wo_aero");
+        steady_sol_wo_aero = *_sys->solution;
 
         // now that we have the solution under the influence of thermal loads,
         // we will use a small number of load steps to get to the steady-state
@@ -1244,7 +1247,6 @@ public:  // parametric constructor
             writer = new libMesh::ExodusII_IO(*_mesh);
 
         for (unsigned int i = 0; i < nconv; i++) {
-
             // create a vector to store the basis
             if (_basis[i] == nullptr)
                 _basis[i] = _sys->solution->zero_clone().release(); // what happens in this line ?
@@ -1297,28 +1299,28 @@ public:  // parametric constructor
 
 
 
-        //////////////////////////////////////////////////////////////////////
-        //  plot stress solution
-        //////////////////////////////////////////////////////////////////////
-        if (if_write_output) {
-
-            _stress_elem->set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
-            _stress_elem->set_participating_elements_to_all();
-            _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
-            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
-            _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
-
-            libMesh::out << "Writing output to : output.exo" << std::endl;
-
-            //std::set<std::string> nm;
-            //nm.insert(_sys->name());
-            // write the solution for visualization
-            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
-                                                                *_eq_sys);//,&nm);
-
-            _stress_elem->clear_discipline_and_system();
-            _stress_assembly->clear_discipline_and_system();
-        }
+//        //////////////////////////////////////////////////////////////////////
+//        //  plot stress solution
+//        //////////////////////////////////////////////////////////////////////
+//        if (if_write_output) {
+//
+//            _stress_elem->set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
+//            _stress_elem->set_participating_elements_to_all();
+//            _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
+//            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+//            _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
+//
+//            libMesh::out << "Writing output to : output.exo" << std::endl;
+//
+//            //std::set<std::string> nm;
+//            //nm.insert(_sys->name());
+//            // write the solution for visualization
+//            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
+//                                                                *_eq_sys);//,&nm);
+//
+//            _stress_elem->clear_discipline_and_system();
+//            _stress_assembly->clear_discipline_and_system();
+//        }
 
 
         //////////////////////////////////////////////////////////////////////
@@ -1327,7 +1329,7 @@ public:  // parametric constructor
 
         _nonlinear_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
         for (int i=0; i < _mesh->n_elem() ; i++){
-            _nonlinear_assembly->calculate_output(*_sys->solution,*_outputs[i]);
+            _nonlinear_assembly->calculate_output(steady_sol_wo_aero,*_outputs[i]);
         }
         _nonlinear_assembly->clear_discipline_and_system();
 
@@ -1415,26 +1417,13 @@ public:  // parametric constructor
             // indices used by GCMMA follow this rule:
             // grad_k = dfi/dxj  ,  where k = j*NFunc + i
             //////////////////////////////////////////////////////////////////
-
-
-            // copy the solution to be used for sensitivity
-            // If a flutter solution was found, then this depends on velocity.
-            // Otherwise, it is independent of velocity
-//            *_sys->solution = steady_sol_wo_aero;
-
-            // first do sensitivity analysis wrt velocity, which is necessary for
-            // flutter sensitivity.
-            libMesh::NumericVector<Real> &dXdV = _sys->add_vector("sol_V_sens");
-            std::vector<Real> dsigma_dV(_outputs.size(), 0.);
-
-            // no flutter solution therefore
-            dXdV.zero();
-
-            _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
-            _modal_assembly->set_base_solution(*_sys->solution);
-            _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
             _nonlinear_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
             _nonlinear_elem_ops->set_discipline_and_system(*_discipline,*_structural_sys);
+
+            _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
+            _modal_assembly->set_base_solution(steady_sol_wo_aero);
+            _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
+
 
             // we are going to choose to use one parametric sensitivity at a time
             for (unsigned int i = 0; i < _n_vars; i++) {
@@ -1454,7 +1443,7 @@ public:  // parametric constructor
 
                 for (unsigned int j = 0 ; j < _mesh->n_elem(); j++){
                     // evaluate sensitivity of the outputs
-                    _nonlinear_assembly->calculate_output_direct_sensitivity(*(_sys->solution),
+                    _nonlinear_assembly->calculate_output_direct_sensitivity(steady_sol_wo_aero,
                                                                              &dXdp,
                                                                              *(_problem_parameters[i]),
                                                                              *(_outputs[j])  );
