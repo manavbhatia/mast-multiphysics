@@ -603,8 +603,8 @@ public:  // parametric constructor
 
 //        _n_plate_elems = _n_divs_x * (_n_stiff + 1) * _n_divs_between_stiff;
 
-        if (e_type == libMesh::TRI3)
-            _n_plate_elems *= 2;
+//        if (e_type == libMesh::TRI3)
+//            _n_plate_elems *= 2;
 
 //        _n_elems_per_stiff = _n_divs_x;
 //        _n_elems = _n_plate_elems + _n_stiff * _n_elems_per_stiff;
@@ -1892,7 +1892,9 @@ public:  // parametric constructor
                         // if a negative eigenvalue is detected
                         // change flag to true to increase obj and fvals
                         // and solve the system one last time and exit
-                        if ( (eig_vec[0] < 0.0) && ( (*_obj._temp)() < max_temp) )  {
+
+                        auto min_eig  = std::min_element(eig_vec.begin(),eig_vec.end());
+                        if ( (*min_eig < 0.0) && ( (*_obj._temp)() < max_temp) )  {
                             _obj._if_neg_eig = true;
                             libMesh::out << " negative eigenvalue found" << std::endl;
                             (*_obj._temp)() = max_temp;
