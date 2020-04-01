@@ -153,10 +153,9 @@ protected:      // protected member variables
     unsigned int
             _n_eig,
             _n_divs_x,
+            _n_divs_y,
             _n_divs_between_stiff,
             _n_stiff, // assumed along x-axis with equidistance spacing
-            _n_plate_elems,
-            _n_elems_per_stiff,
             _n_elems,
             _n_dv_stations_x,
             _n_load_steps;
@@ -291,38 +290,22 @@ public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
                                                                   MAST::Examples::GetPotWrapper& input) :
             MAST::FunctionEvaluation (comm),
-            _initialized(false),
-
             _input(input),
             _n_eig(0),
+
             _n_divs_x(0),
+            _n_divs_y(0),
             _n_divs_between_stiff(0),
             _n_stiff(0),
-            _n_plate_elems(0),
-            _n_elems_per_stiff(0),
             _n_elems(0),
             _n_dv_stations_x(0),
             _n_load_steps(0),
-            _p_val(0.),
-            _vm_rho(0.),
-            _length(0.),
-            _width(0.),
-            _stress_limit(0.),
-            _V0_flutter(0.),
-            _dx(0.),
 
             _mesh(nullptr),
-            _eq_sys(nullptr),
-            _sys(nullptr),
-            _structural_sys(nullptr),
-            _discipline(nullptr),
 
-
-            _jac_scaling(nullptr),
-            _hoff_plate_f(nullptr),
             _weight(nullptr),
+
             _m_card(nullptr),
-            _p_card_plate(nullptr),
 
             _dirichlet_left(nullptr),
             _dirichlet_right(nullptr),
@@ -334,35 +317,58 @@ public:  // parametric constructor
             _T_load(nullptr),
             _p_load(nullptr),
             _piston_bc(nullptr),
-            _flutter_solver(nullptr),
 
+            _length(0.),
+            _width(0.),
 
-            _stress_assembly(nullptr),
-            _stress_elem(nullptr),
-            _modal_elem_ops(nullptr),
-            _nonlinear_elem_ops(nullptr),
-            _nonlinear_assembly(nullptr),
-            _modal_assembly(nullptr),
-            _fsi_assembly(nullptr),
+            _stress_limit(0.),
+            _V0_flutter(0.),
+            _dx(0.),
 
+            _if_vk(false),
 
-            _nsp(nullptr),
             _zero(nullptr),
-            _zero_f(nullptr),
-            _temp(nullptr),
-            _p_cav(nullptr),
+            _nsp(nullptr),
             _mach(nullptr),
             _rho_air(nullptr),
             _gamma_air(nullptr),
-            _velocity(nullptr),
+            _zero_f(nullptr),
+
+            _velocity_f(nullptr),
             _mach_f(nullptr),
             _rho_air_f(nullptr),
             _gamma_air_f(nullptr),
-            _velocity_f(nullptr),
+            _sys(nullptr),
+            _temp(nullptr),
+            _p_cav(nullptr),
+
+            _velocity(nullptr),
 
 
-            _if_vk(false),
+
+
+
+            _initialized(false),
+
+
+
+
+            _p_card_plate(nullptr),
+            _structural_sys(nullptr),
+            _discipline(nullptr),
+            _jac_scaling(nullptr),
+            _nonlinear_assembly(nullptr),
+            _modal_assembly(nullptr),
+            _fsi_assembly(nullptr),
+            _flutter_solver(nullptr),
+            _eq_sys(nullptr),
+            _nonlinear_elem_ops(nullptr),
+            _stress_assembly(nullptr),
+            _modal_elem_ops(nullptr),
+            _p_val(0.),
+            _vm_rho(0.),
             _if_continuation_solver(false),
+            _stress_elem(nullptr),
             _if_neg_eig(false)
     {
 
@@ -387,8 +393,9 @@ public:  // parametric constructor
         // number of load steps
         _n_load_steps = _input("n_load_steps", " ", 10);
         // number of elements
-        _n_divs_x = _input("n_divs_x", " ", 40);
-        _n_divs_between_stiff = _input("n_divs_between_stiff", " ", 10);
+        _n_divs_x = _input("n_divs_x", " ", 10);
+        _n_divs_y = _input("n_divs_y", " ", 6);
+        _n_divs_between_stiff = _input("n_divs_between_stiff", " ", 1);
         _n_stiff = _input("n_stiffeners", " ", 3);
 
         // number of stations
@@ -433,7 +440,6 @@ public:  // parametric constructor
         _init_material(); // create the property functions for the plate
 
         _init_thickness_variables();
-        _init_section_property_plate(); // create the material property card
         _init_section_property_stiffener_hat();
 
         _init_nullspace(); // initialize the null space object and assign it to the structural module
@@ -599,22 +605,10 @@ public:  // parametric constructor
                 e_type = libMesh::Utility::string_to_enum<libMesh::ElemType>(t);
 
 
-
-
-//        _n_plate_elems = _n_divs_x * (_n_stiff + 1) * _n_divs_between_stiff;
-
-//        if (e_type == libMesh::TRI3)
-//            _n_plate_elems *= 2;
-
-//        _n_elems_per_stiff = _n_divs_x;
-//        _n_elems = _n_plate_elems + _n_stiff * _n_elems_per_stiff;
-
-
-
         MAST::HatStiffenedPanelMesh panel_mesh;
         panel_mesh.init(_n_stiff,        // n_stiff,
                             _n_divs_x,       // n_x_divs
-                            _n_divs_x,       // n_y_divs_on_stiffeners
+                            _n_divs_y,       // n_y_divs_on_stiffeners
                             _n_divs_between_stiff,       // n_y_divs_between_stiffeners
                             _length,
                             _width,
@@ -810,9 +804,6 @@ public:  // parametric constructor
         _th_plate_f = new MAST::MultilinearInterpolation("h", _thy_station_vals) ;
         _thy_station_vals.clear();
 
-    }
-
-    void _init_section_property_plate(){
         _hoff_plate_f   = new MAST::SectionOffset("off",
                                                   *_th_plate_f,
                                                   0.);
@@ -832,6 +823,7 @@ public:  // parametric constructor
         _discipline->set_property_for_subdomain(0, *_p_card_plate);
 
     }
+
 
     void _init_material() {
         // create the property functions and add them to the card
@@ -1299,28 +1291,28 @@ public:  // parametric constructor
 
 
 
-//        //////////////////////////////////////////////////////////////////////
-//        //  plot stress solution
-//        //////////////////////////////////////////////////////////////////////
-//        if (if_write_output) {
-//
-//            _stress_elem->set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
-//            _stress_elem->set_participating_elements_to_all();
-//            _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
-//            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
-//            _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
-//
-//            libMesh::out << "Writing output to : output.exo" << std::endl;
-//
-//            //std::set<std::string> nm;
-//            //nm.insert(_sys->name());
-//            // write the solution for visualization
-//            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
-//                                                                *_eq_sys);//,&nm);
-//
-//            _stress_elem->clear_discipline_and_system();
-//            _stress_assembly->clear_discipline_and_system();
-//        }
+        //////////////////////////////////////////////////////////////////////
+        //  plot stress solution
+        //////////////////////////////////////////////////////////////////////
+        if (if_write_output) {
+
+            _stress_elem->set_aggregation_coefficients(_p_val,1.,_vm_rho,_stress_limit);
+            _stress_elem->set_participating_elements_to_all();
+            _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
+            _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
+            _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
+
+            libMesh::out << "Writing output to : output.exo" << std::endl;
+
+            //std::set<std::string> nm;
+            //nm.insert(_sys->name());
+            // write the solution for visualization
+            libMesh::ExodusII_IO(*_mesh).write_equation_systems("output.exo",
+                                                                *_eq_sys);//,&nm);
+
+            _stress_elem->clear_discipline_and_system();
+            _stress_assembly->clear_discipline_and_system();
+        }
 
 
         //////////////////////////////////////////////////////////////////////
@@ -1756,8 +1748,8 @@ public:  // parametric constructor
                         dof_num = nd->dof_number(0, 2, 0);
 
                 unsigned int
-                        n_temp_steps  = _obj._input( "n_temp_steps", "number of load steps for temperature increase",  1000),
-                        n_press_steps = 0;
+                        n_temp_steps  = _obj._input( "n_temp_steps", "number of load steps for temperature increase",  1000);
+
 
                 // write the header to the load.txt file
 
@@ -1894,7 +1886,7 @@ public:  // parametric constructor
                         // and solve the system one last time and exit
 
                         auto min_eig  = std::min_element(eig_vec.begin(),eig_vec.end());
-                        if ( (*min_eig < 0.0) && ( (*_obj._temp)() < max_temp) )  {
+                        if ( (*min_eig < 100.0) && ( (*_obj._temp)() < max_temp) )  {
                             _obj._if_neg_eig = true;
                             libMesh::out << " negative eigenvalue found" << std::endl;
                             (*_obj._temp)() = max_temp;
