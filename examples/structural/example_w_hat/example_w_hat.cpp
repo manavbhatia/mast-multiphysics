@@ -1146,7 +1146,7 @@ public:  // parametric constructor
                     << std::setw(20) << (*_problem_parameters[i])() << std::endl;
 
         bool
-                if_write_output = true;
+                if_write_output = _input("if_write_output", "print outputs", false);
 
         //////////////////////////////////////////////////////////////////////
         libMesh::out << " calculation of weight " << std::endl;
@@ -1273,6 +1273,9 @@ public:  // parametric constructor
             }
         }
 
+        // set the solution back to sol_wo_aero
+        if (if_write_output)
+        *_sys->solution = steady_sol_wo_aero;
 
         //////////////////////////////////////////////////////////////////////
         // perform the flutter analysis
@@ -1300,7 +1303,7 @@ public:  // parametric constructor
             _stress_elem->set_participating_elements_to_all();
             _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
             _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
-            _stress_assembly->update_stress_strain_data(*_stress_elem, *_sys->solution);
+            _stress_assembly->update_stress_strain_data(*_stress_elem, steady_sol_wo_aero);
 
             libMesh::out << "Writing output to : output.exo" << std::endl;
 
@@ -1416,6 +1419,7 @@ public:  // parametric constructor
             _modal_assembly->set_base_solution(steady_sol_wo_aero);
             _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
 
+            *_sys->solution = steady_sol_wo_aero;
 
             // we are going to choose to use one parametric sensitivity at a time
             for (unsigned int i = 0; i < _n_vars; i++) {
