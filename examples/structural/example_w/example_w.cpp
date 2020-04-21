@@ -222,7 +222,7 @@ protected:      // protected member variables
             _thy_station_parameters_stiff,
             _thz_station_parameters_stiff; // N_stiff*N_stations params
     std::vector<MAST::Parameter*>                _problem_parameters;
-    std::auto_ptr<MAST::MultilinearInterpolation>   _th_plate_f;
+    MAST::MultilinearInterpolation* _th_plate_f;
     // number of velocity divisions from V=0 to V=2*V0_flutter
     unsigned int _n_V_divs_flutter;
     std::vector<MAST::StressStrainOutputBase *> output_vec;
@@ -282,7 +282,6 @@ public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
                                                                   MAST::Examples::GetPotWrapper& input) :
             MAST::FunctionEvaluation (comm),
-            _initialized(false),
             _input(input),
             _n_eig(0),
             _n_divs_x(0),
@@ -294,52 +293,72 @@ public:  // parametric constructor
             _n_dv_stations_x(0),
             _n_load_steps(0),
             _mesh(nullptr),
-            _eq_sys(nullptr),
-            _sys(nullptr),
-            _structural_sys(nullptr),
-            _discipline(nullptr),
-            _nonlinear_assembly(nullptr),
-            _modal_assembly(nullptr),
-            _fsi_assembly(nullptr),
-            _jac_scaling(nullptr),
+            
             _hoff_plate_f(nullptr),
+            
+            
             _weight(nullptr),
             _m_card(nullptr),
-            _p_card_plate(nullptr),
+            
             _dirichlet_left(nullptr),
             _dirichlet_right(nullptr),
             _dirichlet_bottom(nullptr),
             _dirichlet_top(nullptr),
+            
             _T_load(nullptr),
             _p_load(nullptr),
             _piston_bc(nullptr),
-            _flutter_solver(nullptr),
-            _stress_assembly(nullptr),
-            _stress_elem(nullptr),
-            _modal_elem_ops(nullptr),
-            _nonlinear_elem_ops(nullptr),
+            
+            
+            
             _length(0.),
             _width(0.),
+            
             _stress_limit(0.),
             _V0_flutter(0.),
-            _nsp(nullptr),
             _dx(0.),
+            
+            
             _if_vk(false),
             _zero(nullptr),
             _thzoff_stiff_f(nullptr),
-            _temp(nullptr),
-            _p_cav(nullptr),
+            _nsp(nullptr),
             _mach(nullptr),
             _rho_air(nullptr),
             _gamma_air(nullptr),
-            _velocity(nullptr),
+            
+            
+            _velocity_f(nullptr),
+            
             _mach_f(nullptr),
             _rho_air_f(nullptr),
             _gamma_air_f(nullptr),
-            _velocity_f(nullptr),
+            _sys(nullptr),
+            _temp(nullptr),
+            _p_cav(nullptr),
+            
+            _velocity(nullptr),
+            
+            _initialized(false),
+            
+            _p_card_plate(nullptr),
+            _structural_sys(nullptr),
+            _discipline(nullptr),
+            _jac_scaling(nullptr),
+            _nonlinear_assembly(nullptr),
+            _modal_assembly(nullptr),
+            
+            _fsi_assembly(nullptr),
+            _flutter_solver(nullptr),
+            _eq_sys(nullptr),
+            _nonlinear_elem_ops(nullptr),
+            _stress_assembly(nullptr),
+            _modal_elem_ops(nullptr),
+            
             _p_val(0.),
             _vm_rho(0.),
             _if_continuation_solver(false),
+            _stress_elem(nullptr),
             _if_neg_eig(false)
 
 //        _thy_station_vals(nullptr),
@@ -406,17 +425,15 @@ public:  // parametric constructor
 
         _init_dv_vector();
 
-        _init_thickness_variables();
+        _init_material(); // create the property functions for the plate
 
         _init_loads();
 
-        _init_material(); // create the property functions for the plate
-
-        _init_section_property_plate(); // create the material property card
-
         _init_piston_vals();
 
-        _init_section_property_stiffener(); // now add the property cards for each stiffener element orientation
+        _init_thickness_variables_plate();
+
+        _init_thickness_variables_stiff();
 
         _init_nullspace(); // initialize the null space object and assign it to the structural module
 
@@ -633,7 +650,6 @@ public:  // parametric constructor
 
     }
 
-
     void _init_system_and_discipline() {
         //
         // make sure that the mesh has been initialized
@@ -729,7 +745,7 @@ public:  // parametric constructor
                 th_l     = _input("thickness_lower", "", 0.001),
                 th_u     = _input("thickness_upper", "", 0.2),
                 th       = _input("thickness", "", 0.2),
-		th_stiff = _input("thickness_stiff","",0.2);
+		        th_stiff = _input("thickness_stiff","",0.2);
 
         //distance btw stations
         _dx = _length / (_n_dv_stations_x - 1);
@@ -757,32 +773,9 @@ public:  // parametric constructor
             _dv_init[i] = _input("dv_init", "", th_stiff / th_u, i);
         }
 
-//        _dv_init     [          0 ] =    0.000756353417639/ th_u;
-//        _dv_init     [          1 ] =    0.001289105172330/ th_u;
-//        _dv_init     [          2 ] =    0.000758136764126/ th_u;
-//        _dv_init     [          3 ] =    0.004738767647553/ th_u;
-//        _dv_init     [          4 ] =    0.004366339759017/ th_u;
-//        _dv_init     [          5 ] =    0.004744810158320/ th_u;
-//        _dv_init     [          6 ] =    0.004492514256054/ th_u;
-//        _dv_init     [          7 ] =    0.004059037082863/ th_u;
-//        _dv_init     [          8 ] =    0.004498139875795/ th_u;
-//        _dv_init     [          9 ] =    0.004716538972727/ th_u;
-//        _dv_init     [         10 ] =    0.004286691718592/ th_u;
-//        _dv_init     [         11 ] =    0.004616035180759/ th_u;
-//        _dv_init     [         12 ] =    0.004543729599818/ th_u;
-//        _dv_init     [         13 ] =    0.004123091251211/ th_u;
-//        _dv_init     [         14 ] =    0.004488817534016/ th_u;
-//        _dv_init     [         15 ] =    0.004809972841285/ th_u;
-//        _dv_init     [         16 ] =    0.004365452325321/ th_u;
-//        _dv_init     [         17 ] =    0.004807931915246/ th_u;
-//        _dv_init     [         18 ] =    0.004526012717207/ th_u;
-//        _dv_init     [         19 ] =    0.004056541442243/ th_u;
-//        _dv_init     [         20 ] =    0.004527049343407/ th_u;
-
-
     }
 
-    void _init_thickness_variables(){
+    void _init_thickness_variables_plate(){
 
         // create the thickness variables
         _th_station_parameters_plate.resize(_n_dv_stations_x);
@@ -817,8 +810,26 @@ public:  // parametric constructor
         }
 
         // now create the h_y function and give it to the property card
-        _th_plate_f.reset(new MAST::MultilinearInterpolation("h", _thy_station_vals));
+        _th_plate_f = new MAST::MultilinearInterpolation("h", _thy_station_vals);
         _thy_station_vals.clear();
+
+        _hoff_plate_f   = new MAST::SectionOffset("off",
+                                                  *_th_plate_f,
+                                                  0.);
+
+        // create the element property card
+        _p_card_plate = new MAST::Solid2DSectionElementPropertyCard;
+
+        // add the section properties to the card
+        _p_card_plate->add(*_th_plate_f);
+        _p_card_plate->add(*_hoff_plate_f);
+
+        // tell the section property about the material property
+        _p_card_plate->set_material(*_m_card);
+
+        if (_if_vk) _p_card_plate->set_strain(MAST::NONLINEAR_STRAIN);
+
+        _discipline->set_property_for_subdomain(0, *_p_card_plate);
 
     }
 
@@ -865,37 +876,7 @@ public:  // parametric constructor
 
     }
 
-    void _init_section_property_plate(){
-
-
-        _thzoff_stiff_f = new MAST::ConstantFieldFunction("hz_off", *_zero);
-        _hoff_plate_f   = new MAST::SectionOffset("off",
-                                                  *_th_plate_f,
-                                                  0.);
-
-        // create the element property card
-        _p_card_plate = new MAST::Solid2DSectionElementPropertyCard;
-
-        // add the section properties to the card
-        _p_card_plate->add(*_th_plate_f);
-        _p_card_plate->add(*_hoff_plate_f);
-
-        // tell the section property about the material property
-        _p_card_plate->set_material(*_m_card);
-
-        if (_if_vk) _p_card_plate->set_strain(MAST::NONLINEAR_STRAIN);
-
-        _discipline->set_property_for_subdomain(0, *_p_card_plate);
-
-    }
-
-    void _init_section_property_stiffener() {
-
-        RealVectorX orientation = RealVectorX::Zero(3);
-        orientation(1) = 1.;
-
-        // property card per stiffener
-        _p_card_stiff.resize(_n_stiff);
+    void _init_thickness_variables_stiff() {
 
         // thickness per stiffener station
         _thy_station_parameters_stiff.resize(_n_dv_stations_x * _n_stiff);
@@ -923,8 +904,8 @@ public:  // parametric constructor
                 // specified station and a constant function that defines the
                 // field function at that location.
                 MAST::Parameter
-                        *h_y = new MAST::Parameter(ossy.str(), _input("thickness", "", 0.002)),
-                        *h_z = new MAST::Parameter(ossz.str(), _input("thickness", "", 0.002));
+                        *h_y = new MAST::Parameter(ossy.str(), _input("thickness_stiff", "", 0.002)),
+                        *h_z = new MAST::Parameter(ossz.str(), _input("thickness_stiff", "", 0.002));
 
                 MAST::ConstantFieldFunction
                         *h_y_f = new MAST::ConstantFieldFunction(ossy.str(), *h_y),
@@ -950,37 +931,45 @@ public:  // parametric constructor
                 _problem_parameters[(2 * i + 2) * _n_dv_stations_x + j] = h_z;
             }
 
-            // now create the h_y function and give it to the property card
-            _thy_stiff_f[i] = new MAST::MultilinearInterpolation("hy", _thy_station_vals);
-            _thz_stiff_f[i] = new MAST::MultilinearInterpolation("hz", _thz_station_vals);
-            _hyoff_stiff_f[i] = new MAST::SectionOffset("hy_off",
-                                                        *_thy_stiff_f[i],
-                                                        -1.);
 
-            _p_card_stiff[i] = new MAST::Solid1DSectionElementPropertyCard;
+            _thzoff_stiff_f = new MAST::ConstantFieldFunction("hz_off", *_zero);
+            RealVectorX orientation = RealVectorX::Zero(3);
+            orientation(1) = 1.;
+
+            // property card per stiffener
+            _p_card_stiff.resize(_n_stiff);
 
 
-            // add the section properties to the card
-            _p_card_stiff[i]->add(*_thy_stiff_f[i]);
-            _p_card_stiff[i]->add(*_thz_stiff_f[i]);
-            _p_card_stiff[i]->add(*_hyoff_stiff_f[i]);
-            _p_card_stiff[i]->add(*_thzoff_stiff_f);
-            _p_card_stiff[i]->y_vector() = orientation;
+                // now create the h_y function and give it to the property card
+                _thy_stiff_f[i] = new MAST::MultilinearInterpolation("hy", _thy_station_vals);
+                _thz_stiff_f[i] = new MAST::MultilinearInterpolation("hz", _thz_station_vals);
+                _hyoff_stiff_f[i] = new MAST::SectionOffset("hy_off",
+                                                            *_thy_stiff_f[i],
+                                                            -1.);
 
-            // tell the section property about the material property
-            _p_card_stiff[i]->set_material(*_m_card);
+                _p_card_stiff[i] = new MAST::Solid1DSectionElementPropertyCard;
 
-            //_p_card_stiff[i]->set_bending_model(MAST::TIMOSHENKO);
-            //_p_card_stiff[i]->set_bending_model(MAST::BERNOULLI);
 
-            if (_if_vk) _p_card_stiff[i]->set_strain(MAST::NONLINEAR_STRAIN);
+                // add the section properties to the card
+                _p_card_stiff[i]->add(*_thy_stiff_f[i]);
+                _p_card_stiff[i]->add(*_thz_stiff_f[i]);
+                _p_card_stiff[i]->add(*_hyoff_stiff_f[i]);
+                _p_card_stiff[i]->add(*_thzoff_stiff_f);
+                _p_card_stiff[i]->y_vector() = orientation;
 
-            _p_card_stiff[i]->init();
+                // tell the section property about the material property
+                _p_card_stiff[i]->set_material(*_m_card);
 
-            // the domain ID of the stiffener is 1 plus the stiff number
-            _discipline->set_property_for_subdomain(i + 1, *_p_card_stiff[i]);
-        }
+                //_p_card_stiff[i]->set_bending_model(MAST::TIMOSHENKO);
+                //_p_card_stiff[i]->set_bending_model(MAST::BERNOULLI);
 
+                if (_if_vk) _p_card_stiff[i]->set_strain(MAST::NONLINEAR_STRAIN);
+
+                _p_card_stiff[i]->init();
+
+                // the domain ID of the stiffener is 1 plus the stiff number
+                _discipline->set_property_for_subdomain(i + 1, *_p_card_stiff[i]);
+            }
     }
 
     void _init_piston_vals() {
@@ -1185,8 +1174,9 @@ public:  // parametric constructor
                     << std::setw(20) << (*_problem_parameters[i])() << std::endl;
 
         bool
-                if_write_output = true;
+        if_write_output = _input("if_write_output", "print outputs", false);
 
+        
         //////////////////////////////////////////////////////////////////////
         libMesh::out << " calculation of wheight " << std::endl;
         // the optimization problem is defined as
@@ -1222,12 +1212,11 @@ public:  // parametric constructor
 
         steady_solve.solve();
 
-//        libmesh_error();
 
         // us this solution as the base solution later if no flutter is found.
         libMesh::NumericVector<Real> &
                 steady_sol_wo_aero = _sys->add_vector("steady_sol_wo_aero");
-        steady_sol_wo_aero = *_sys->solution;
+        steady_sol_wo_aero = _sys->get_vector("base_solution");
 
 
         // now that we have the solution under the influence of thermal loads,
@@ -1322,81 +1311,18 @@ public:  // parametric constructor
             }
         }
 
-//        // solving the eig problem using smallest mag to obtain negative eigvalues
-//
-//        _sys->eigen_solver->set_position_of_spectrum( libMesh::SMALLEST_REAL );
-//        _sys->eigenproblem_solve( *_modal_elem_ops, *_modal_assembly);
-//
-//        unsigned int
-//                nconv_1 = std::min(_sys->get_n_converged_eigenvalues(),
-//                                   _sys->get_n_requested_eigenvalues());
-//        // vector of eigenvalues
-//        std::vector<Real> eig_vals_1(nconv_1);
-//
-//        for (unsigned int i = 0; i < nconv_1; i++) {
-//            // now write the eigenvalue
-//            Real
-//                    re = 0.,
-//                    im = 0.;
-//            _sys->get_eigenvalue(i, re, im);
-//
-//            eig_vals_1[i] = re;
-//        }
-//        _modal_assembly->clear_base_solution();
-//        _modal_assembly->clear_discipline_and_system();
-//        _modal_elem_ops->clear_discipline_and_system();
-
-
+        if (if_write_output)
+            *_sys->solution = steady_sol_wo_aero;
+        
         //////////////////////////////////////////////////////////////////////
         // perform the flutter analysis
         //////////////////////////////////////////////////////////////////////
 
-        std::pair<bool, MAST::FlutterRootBase *> sol(false, nullptr);
-
-        // perform flutter analysis only if all modal eigenvalues are positive
-        if_all_eig_positive = false;
-        if (if_all_eig_positive) {
-
-            // the flutter solver calculates the stability eigenvalues about
-            // an equilibrium state that includes the aerodynamic loads. The
-            // stability analysis starts with V=0, which corresponds to the
-            // equilibrium state calculated for the thermal loads. However,
-            // a new equilibrium state is calculated for each velocity. So,
-            // the flutter root, if found will depend on the equilibrium state
-            // which, in turn, depends on the velocity.
-
-            _fsi_assembly->set_discipline_and_system(*_discipline,
-                                                     *_structural_sys);
-            _fsi_assembly->set_base_solution(steady_solve.solution());
-            _flutter_solver->clear_solutions();
-            _flutter_solver->attach_assembly(*_fsi_assembly);
-            _flutter_solver->attach_steady_solver(steady_solve);
-            _flutter_solver->initialize(*_velocity,
-                                        0.0e3,                // lower V
-                                        2 * _V0_flutter,        // upper V
-                                        _n_V_divs_flutter,    // number of divisions
-                                        _basis);              // basis vectors
-
-            sol = _flutter_solver->analyze_and_find_critical_root_without_tracking(1.e-3, 20);
-            _flutter_solver->print_sorted_roots();
-            _fsi_assembly->clear_discipline_and_system();
-            _flutter_solver->clear_assembly_object();
-        }
-        else {
-            libMesh::out
-                    << "** Negative frequency: skipping flutter analysis **"
-                    << std::endl;
-        }
-
-        // if the flutter root was not found, then we will use the steady sol wo
-        // aero as the base solution for all the following computations
-        // Otherwise, the equilibrium state is dependent on the velocity.
-        if (!sol.second) {
-            // velocity should be set to zero for all residual calculations
-            (*_velocity) = 0.;
-            steady_solve.solution() = steady_sol_wo_aero;
-            *_sys->solution = steady_sol_wo_aero;
-        }
+        // velocity should be set to zero for all residual calculations
+        (*_velocity) = 0.;
+        steady_solve.solution() = steady_sol_wo_aero;
+        *_sys->solution = steady_sol_wo_aero;
+        
 
         //////////////////////////////////////////////////////////////////////
         //  plot stress solution
@@ -1421,18 +1347,6 @@ public:  // parametric constructor
             _stress_assembly->clear_discipline_and_system();
         }
 
-
-        if (sol.second && if_write_output) {
-
-            MAST::plot_structural_flutter_solution("structural_flutter_mode.exo",
-                                                   *_sys,
-                                                   sol.second->eig_vec_right,
-                                                   _basis);
-        }
-
-
-
-
         //////////////////////////////////////////////////////////////////////
         // now calculate the stress output based on the velocity output
         //////////////////////////////////////////////////////////////////////
@@ -1443,20 +1357,6 @@ public:  // parametric constructor
         }
         _nonlinear_assembly->clear_discipline_and_system();
 
-
-//        std::string nm;
-//        std::ofstream out_stress;
-//        if (comm().rank() == 0)
-//            nm ="stresses.txt";
-//        //if (comm().rank() == 1)
-//         //   nm ="stressespr1.txt";
-//
-//        out_stress.open(nm, std::ofstream::out);
-//        out_stress << std::setw(10) << "stresses"
-//                   << std::endl;
-//        for (int di = 0; di < _outputs.size(); di++)
-//            out_stress << std::setw(10) << _outputs[di]->output_total()
-//                       << std::endl;
 
         //////////////////////////////////////////////////////////////////////
         // get the objective
@@ -1494,20 +1394,6 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
 
             fvals[_n_eig+0]  =  -100.;
-
-
-
-//        std::ofstream out_f_vals;
-//        if (comm().rank() == 0) {
-//
-//            out_f_vals.open("f_vals.txt", std::ofstream::out);
-//            out_f_vals << std::setw(10) << "f_vals"
-//                       << std::endl;
-//            for (int di = 0; di < _n_ineq ; di++)
-//                out_f_vals << std::setw(10) << fvals[di]
-//                           << std::endl;
-//        }
-
 
         //////////////////////////////////////////////////////////////////
         //   evaluate sensitivity if needed
@@ -1565,47 +1451,11 @@ public:  // parametric constructor
             libMesh::NumericVector<Real> &dXdV = _sys->add_vector("sol_V_sens");
             std::vector<Real> dsigma_dV(_outputs.size(), 0.);
 
-            if (sol.second) {
-                libmesh_error();
-                //params[0].second = _velocity;
-
-                _nonlinear_assembly->set_discipline_and_system(*_discipline,
-                                                               *_structural_sys);
-
-                _nonlinear_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
-
-                _sys->sensitivity_solve(*_nonlinear_elem_ops,
-                                        *_nonlinear_assembly,
-                                        *_velocity,
-                                        false);
-
-                dXdV = _sys->get_sensitivity_solution(0);
-
-                // This accounts for the dependence of equilibrium state on velocity
-                // dsigma/dp   =  par sigma/par p + par sigma/ par V dV/dp
-                this->clear_stresss();
-
-                libMesh::NumericVector<Real>& dxdp = _sys->add_vector("dxdp");
-
-                for (int i=0; i < _outputs.size(); i++) {
-                    _nonlinear_assembly->calculate_output_direct_sensitivity(*(_sys->solution),
-                                                                             &dxdp,
-                                                                             *_velocity,
-                                                                             *_outputs[i]);
-                }
-                for (unsigned int j = 0; j < _outputs.size(); j++)
-                    dsigma_dV[j] = _outputs[j]->output_sensitivity_total(*_velocity);
-                            //von_Mises_p_norm_functional_sensitivity_for_all_elems
-                            //(pval, _velocity);
-
-                _nonlinear_assembly->clear_discipline_and_system();
-            }
-            else {
-                dXdV.zero();
-            }
-
+            // no flutter solution
+            dXdV.zero();
+            
             _modal_assembly->set_discipline_and_system(*_discipline, *_structural_sys); // modf_w
-            _modal_assembly->set_base_solution(*_sys->solution);
+            _modal_assembly->set_base_solution(steady_sol_wo_aero);
             _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
             _nonlinear_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
             _nonlinear_elem_ops->set_discipline_and_system(*_discipline,*_structural_sys);
@@ -1628,7 +1478,7 @@ public:  // parametric constructor
 
                 for (unsigned int j = 0 ; j < _mesh->n_elem(); j++){
                     // evaluate sensitivity of the outputs
-                    _nonlinear_assembly->calculate_output_direct_sensitivity(*(_sys->solution),
+                    _nonlinear_assembly->calculate_output_direct_sensitivity(steady_sol_wo_aero,
                                                                              &dXdp,
                                                                              *(_problem_parameters[i]),
                                                                              *(_outputs[j])  );
@@ -1648,82 +1498,27 @@ public:  // parametric constructor
 
                 // if all eigenvalues are positive, calculate at the sensitivity of
                 // flutter velocity
-
-
-                // first block not used no flutter solution
-
-                if (if_all_eig_positive && sol.second) {
-                    libmesh_error();
-
-                    //
-                    //           g = V0/Vf - 1 <= 0
-                    //   Hence, sensitivity is
-                    //   -V0/Vf^2  dVf
-                    //
-                    libmesh_error();
-                    _fsi_assembly->set_base_solution(steady_solve.solution());
-                    _fsi_assembly->set_base_solution(dXdp, true);
-                    _fsi_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
-                    _flutter_solver->attach_assembly(*_fsi_assembly);
-                    _flutter_solver->calculate_sensitivity(*sol.second,
-                                                           *_problem_parameters[i],
-                                                           &dXdp,
-                                                           &dXdV);
-                    _fsi_assembly->clear_discipline_and_system();
-                    _flutter_solver->clear_assembly_object();
-
-                    grads[(i * _n_ineq) + (_n_eig + 0)] = -(_dv_scaling[i] *
-                                                            _V0_flutter / pow(sol.second->V, 2) *
-                                                            sol.second->V_sens);
-
-                    // add the partial derivative of stress due to velocity sensitivity
-                    for (unsigned int j = 0; j < _outputs.size(); j++)
-                        grads[(i * _n_ineq) + (j + _n_eig + 1 )] += _dv_scaling[i] / _stress_limit *
-                                                                            dsigma_dV[j] * sol.second->V_sens;
-
-                    // The natural frequencies were calculated about a base solution
-                    // that did not include the aerodynamic loads. Hence, we will
-                    // use a different base soltuion here that what was used for
-                    // flutter solution. However, a new sensitivity solution is required
-                    // for this state, since the previous dXdp was calculated for
-                    // X including aero loads.
-                    dXdp.zero();
-
-                    // sensitivity analysis
-                    (*_velocity) = 0.;
-                    *_sys->solution = steady_sol_wo_aero;
-                    _nonlinear_assembly->set_discipline_and_system(*_discipline,
-                                                                   *_structural_sys);
-                    _nonlinear_elem_ops->set_discipline_and_system(*_discipline,
-                                                                   *_structural_sys);
-                    _sys->sensitivity_solve(*_nonlinear_elem_ops,
-                                            *_nonlinear_assembly,
-                                            *_problem_parameters[i],
-                                            true);
-
-                    _nonlinear_assembly->clear_discipline_and_system();
-                    _nonlinear_elem_ops->clear_discipline_and_system();
-                } else {
-                    // if no root was found, then set the sensitivity to a zero value
-                    grads[(i * _n_ineq) + (_n_eig + 0)] = 0.;
-                }
-
+                // if no root was found, then set the sensitivity to a zero value
+                
+                grads[(i * _n_ineq) + (_n_eig + 0)] = 0.;
+                
 
                 // calculate the sensitivity of the eigenvalues
-                std::vector<Real> eig_sens(nconv);
+                std::vector<Real> eig_sens(nconv,0.);
+
+                if (nconv) {
+                    _modal_assembly->set_base_solution(dXdp, true);
+                    _sys->eigenproblem_sensitivity_solve(*_modal_elem_ops,
+                                                         *_modal_assembly,
+                                                         *_problem_parameters[i],
+                                                         eig_sens);
 
 
-                _modal_assembly->set_base_solution(dXdp, true);
-                _sys->eigenproblem_sensitivity_solve( *_modal_elem_ops,
-                                                      *_modal_assembly,
-                                                      *_problem_parameters[i],
-                                                      eig_sens);
+                    _modal_assembly->clear_base_solution(true);
 
-
-                _modal_assembly->clear_base_solution(true);
-
-                for (unsigned int j = 0; j < nconv; j++) {
-                    grads[(i * _n_ineq) + j] = -_dv_scaling[i] * eig_sens[j] / 1.e7;
+                    for (unsigned int j = 0; j < nconv; j++) {
+                        grads[(i * _n_ineq) + j] = -_dv_scaling[i] * eig_sens[j] / 1.e7;
+                    }
                 }
             }
 
@@ -1734,18 +1529,6 @@ public:  // parametric constructor
             _modal_elem_ops->clear_discipline_and_system();
 
             libMesh::out << "** sensitivity analysis DONE **" << std::endl;
-
-//            std::ofstream out_grads;
-//            if (comm().rank() == 0) {
-//
-//                out_grads.open("grads.txt", std::ofstream::out);
-//                out_grads << std::setw(10) << "grads"
-//                           << std::endl;
-//                for (int di = 0; di < grads.size() ; di++)
-//                    out_grads << std::setw(10) << grads[di]
-//                               << std::endl;
-//            }
-
 
         }
     }
@@ -1780,6 +1563,7 @@ public:  // parametric constructor
 
 
         // write the solution for visualization
+        *_sys->solution = _sys->get_vector("base_solution");
 
         _stress_elem->set_discipline_and_system(*_discipline,*_structural_sys);
         _stress_assembly->set_discipline_and_system(*_discipline,*_structural_sys);
@@ -2010,8 +1794,8 @@ public:  // parametric constructor
                         dof_num = nd->dof_number(0, 2, 0);
 
                 unsigned int
-                        n_temp_steps  = _obj._input( "n_temp_steps", "number of load steps for temperature increase",  1000),
-                        n_press_steps = 0;
+                n_temp_steps  = _obj._input( "n_temp_steps", "number of load steps for temperature increase",  1000);
+                        
 
                 // write the header to the load.txt file
 
@@ -2108,7 +1892,7 @@ public:  // parametric constructor
                                         << std::setw(25) << (*_obj._p_cav)();
                             }
 
-                            std::fill(eig_vec.begin(), eig_vec.end(), 0.);
+                            eig_vec.resize(nconv);
                             for (int dj =0 ; dj < nconv; dj++){
                                 // now write the eigenvalue
                                 Real
@@ -2146,13 +1930,22 @@ public:  // parametric constructor
                         // if a negative eigenvalue is detected
                         // change flag to true to increase obj and fvals
                         // and solve the system one last time and exit
-                        if ( (eig_vec[0] < 0.0) && ( (*_obj._temp)() < max_temp) )  {
+
+                        auto min_eig  = std::min_element(eig_vec.begin(),eig_vec.end());
+                        if ( (*min_eig < 100.0) && ( (*_obj._temp)() < max_temp) )  {
                             _obj._if_neg_eig = true;
                             libMesh::out << " negative eigenvalue found" << std::endl;
                             (*_obj._temp)() = max_temp;
                             break;
                         }
 
+                        if (  (*_obj._temp)() < 0.0 )   {
+                            _obj._if_neg_eig = true;
+                            libMesh::out << " Continuation solver diverged" << std::endl;
+                            (*_obj._temp)() = max_temp;
+                            break;
+                        }
+                        
                         // if the temperature given by the solver is bigger than tmax
                         // go back to tmax and solve the system one more time and exit
                         if ((*_obj._temp)() > max_temp) {
@@ -2242,7 +2035,7 @@ int main(int argc, char* argv[]) {
 
     MAST::GCMMAOptimizationInterface optimizer;
     
-    
+
     unsigned int
             max_inner_iters        = _input("max_inner_iters", "maximum inner iterations in GCMMA", 15);
 
