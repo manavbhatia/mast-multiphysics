@@ -285,6 +285,8 @@ protected:      // protected member variables
     MAST::StressStrainOutputBase*               _stress_elem;
     // output quantity objects to evaluate stress
     std::vector<MAST::StressStrainOutputBase *> _outputs;
+    std::vector<unsigned int> _prev_elems;
+
     bool _if_neg_eig;
 public:  // parametric constructor
     StiffenedPlateThermallyStressedPistonTheorySizingOptimization(const libMesh::Parallel::Communicator &comm,
@@ -1024,35 +1026,20 @@ public:  // parametric constructor
     void _init_outputs(){
         // create the output objects, one for each element
 
-            _outputs.resize(_mesh->n_elem(), nullptr);
+            _outputs.resize(_mesh->n_local_elem(), nullptr);
 
-            for (int i = 0; i < _mesh->n_elem(); i++) {
+            for (int i = 0; i < _mesh->n_local_elem(); i++) {
                 MAST::StressStrainOutputBase *output = new MAST::StressStrainOutputBase;
                 output->set_discipline_and_system(*_discipline, *_structural_sys);
                 output->set_aggregation_coefficients(_p_val, 1.0, _vm_rho, _stress_limit);
+                output->set_skip_comm_sum(true);
                 _outputs[i] = output;
         }
 
+        _prev_elems.resize(comm().size() , 0);
 
-        std::vector<unsigned int> n_size(comm().size(), 0);
-
-        for (int i = 0; i < comm().size(); i++) {
-            n_size[i] = _mesh->n_elem_on_proc(i);
-        }
-
-          //  std::cout << "number of elems on proc " << 0 << " is  " << n_size[0] << std::endl;
-           // std::cout << "number of elems on proc " << 1 << " is  " << n_size[1] << std::endl;
-        //       n[comm().rank()] = _mesh->n_local_elem();
-        //     comm().sum(n);
-
-        std::vector<unsigned int> prev_elems(comm().size() , 0);
-
-        if (comm().rank() != 0) {
-            for (int j = 0; j < comm().rank() ; j++)
-                prev_elems[comm().rank()] += n_size[j];
-        }
-
-        comm().sum(prev_elems);
+        for (int j = 0; j<comm().size()-1 ; j++)
+            _prev_elems[j+1] += _prev_elems[j] + _mesh->n_elem_on_proc(j);
 
 
         libMesh::MeshBase::const_element_iterator
@@ -1061,15 +1048,15 @@ public:  // parametric constructor
 
         int i = 0;
         for (; e_it != e_end; e_it++) {
-            _outputs[ (i + prev_elems[comm().rank()]) ]->set_participating_elements({*e_it});
+            _outputs[i]->set_participating_elements({*e_it});
 
             i += 1;
         }
 
-        if (_outputs.size() != _mesh->n_elem())
+        if (_outputs.size() != _mesh->n_local_elem())
             libMesh::out << "_outputs is not the correct size " << std::endl;
-
-            libmesh_assert_equal_to(_outputs.size(), _mesh->n_elem());
+        
+            libmesh_assert_equal_to(_outputs.size(), _mesh->n_local_elem());
 
 
     }
@@ -1323,7 +1310,7 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
 
         _nonlinear_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
-        for (int i=0; i < _mesh->n_elem() ; i++){
+        for (int i=0; i < _mesh->n_local_elem() ; i++){
             _nonlinear_assembly->calculate_output(steady_sol_wo_aero,*_outputs[i]);
         }
         _nonlinear_assembly->clear_discipline_and_system();
@@ -1345,9 +1332,15 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
 
         // copy the element von Mises stress values as the functions
-        for (unsigned int i = 0; i < _mesh->n_elem(); i++)
-            fvals[_n_eig + 1 + i ] = -1. +   _outputs[i]->output_total() /
-                                             _stress_limit;
+        for (unsigned int i = 0; i < _mesh->n_local_elem(); i++)
+            fvals[_n_eig + 1 + _prev_elems[_communicator.rank()] + i ] =
+            -1. + _outputs[i]->output_total()/_stress_limit;
+        
+        // Each processor only contributes to the local elements and all others remain zero.
+        // We sum the stress constraints across procesors so that all processors have the
+        // same stress constraint values. We do this before setting the eigenvlaue constraints
+        // since those are set on all ranks.
+        _communicator.sum(fvals);
 
         //////////////////////////////////////////////////////////////////////
         // evaluate the eigenvalue constraint
@@ -1420,6 +1413,8 @@ public:  // parametric constructor
             _modal_elem_ops->set_discipline_and_system(*_discipline, *_structural_sys);
 
             *_sys->solution = steady_sol_wo_aero;
+            
+            std::vector<Real> grad_stress(grads.size(), 0.);
 
             // we are going to choose to use one parametric sensitivity at a time
             for (unsigned int i = 0; i < _n_vars; i++) {
@@ -1437,25 +1432,23 @@ public:  // parametric constructor
 
                 dXdp = _sys->get_sensitivity_solution(0);
 
-                for (unsigned int j = 0 ; j < _mesh->n_elem(); j++){
+                for (unsigned int j = 0 ; j < _mesh->n_local_elem(); j++){
                     // evaluate sensitivity of the outputs
                     _nonlinear_assembly->calculate_output_direct_sensitivity(steady_sol_wo_aero,
                                                                              &dXdp,
                                                                              *(_problem_parameters[i]),
                                                                              *(_outputs[j])  );
+                    
+                    // copy the sensitivity values in the output. This accounts for the
+                    // sensitivity of state wrt parameter. However, if a flutter root
+                    // was found, the state depends on velocity, which depends on the
+                    // parameter. Hence, the total sensitivity of stress constraint
+                    // would need to include the latter component, which was added
+                    // above.
+                    grad_stress[(i * _n_ineq) + (_prev_elems[_communicator.rank()]+j + _n_eig + 1 )] =
+                    _dv_scaling[i] / _stress_limit *
+                    _outputs[j]->output_sensitivity_total(*(_problem_parameters[i]));
                 }
-
-                // copy the sensitivity values in the output. This accounts for the
-                // sensitivity of state wrt parameter. However, if a flutter root
-                // was found, the state depends on velocity, which depends on the
-                // parameter. Hence, the total sensitivity of stress constraint
-                // would need to include the latter component, which was added
-                // above.
-                for (unsigned int j = 0; j < _mesh->n_elem(); j++) {
-                    grads[(i * _n_ineq) + (j + _n_eig + 1 )] = _dv_scaling[i] / _stress_limit *
-                                    _outputs[j]->output_sensitivity_total(*(_problem_parameters[i]));
-                }
-
 
                 // first block not used no flutter solution
                 // if no root was found, then set the sensitivity to a zero value
@@ -1479,6 +1472,16 @@ public:  // parametric constructor
                 }
             }
 
+            // Each processor only contributes to the local elements and all others remain zero.
+            // We sum the stress constraints across procesors so that all processors have the
+            // same stress constraint values. We do this before setting the eigenvlaue constraints
+            // since those are set on all ranks.
+            _communicator.sum(grad_stress);
+            
+            // now combine the values from stress and eigenvalue constraints
+            for (unsigned int i=0; i<grads.size(); i++)
+                grads[i] = grads[i] + grad_stress[i];
+            
             _nonlinear_assembly->clear_discipline_and_system();
             _nonlinear_elem_ops->clear_discipline_and_system();
             _modal_assembly->clear_discipline_and_system();
