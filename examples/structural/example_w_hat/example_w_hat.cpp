@@ -1310,8 +1310,10 @@ public:  // parametric constructor
         //////////////////////////////////////////////////////////////////////
 
         _nonlinear_assembly->set_discipline_and_system(*_discipline, *_structural_sys);
+        std::unique_ptr<libMesh::NumericVector<Real>>
+        localized_sol(_nonlinear_assembly->build_localized_vector(*_sys, steady_sol_wo_aero).release());
         for (int i=0; i < _mesh->n_local_elem() ; i++){
-            _nonlinear_assembly->calculate_output(steady_sol_wo_aero,*_outputs[i]);
+            _nonlinear_assembly->calculate_output(*localized_sol, false, *_outputs[i]);
         }
         _nonlinear_assembly->clear_discipline_and_system();
 
@@ -1420,22 +1422,25 @@ public:  // parametric constructor
             for (unsigned int i = 0; i < _n_vars; i++) {
                 libMesh::out << "design variable " << i << std::endl;
 
-                // iterate over each dv and calculate the sensitivity
-                libMesh::NumericVector<Real> &dXdp = _sys->add_sensitivity_solution(0);
-                dXdp.zero();
-
                 // sensitivity analysis
-                _sys->sensitivity_solve(*_nonlinear_elem_ops,
+                _sys->sensitivity_solve(*localized_sol,
+                                        false,
+                                        *_nonlinear_elem_ops,
                                         *_nonlinear_assembly,
                                         *_problem_parameters[i],
                                         true);
 
-                dXdp = _sys->get_sensitivity_solution(0);
+                std::unique_ptr<libMesh::NumericVector<Real>>
+                localized_sol_sens(_nonlinear_assembly->build_localized_vector
+                                   (*_sys, _sys->get_sensitivity_solution(0)).release());
+
 
                 for (unsigned int j = 0 ; j < _mesh->n_local_elem(); j++){
                     // evaluate sensitivity of the outputs
-                    _nonlinear_assembly->calculate_output_direct_sensitivity(steady_sol_wo_aero,
-                                                                             &dXdp,
+                    _nonlinear_assembly->calculate_output_direct_sensitivity(*localized_sol,
+                                                                             false,
+                                                                             localized_sol_sens.get(),
+                                                                             false,
                                                                              *(_problem_parameters[i]),
                                                                              *(_outputs[j])  );
                     
@@ -1457,7 +1462,7 @@ public:  // parametric constructor
                 // calculate the sensitivity of the eigenvalues
                 std::vector<Real> eig_sens(nconv);
                 if (nconv) {
-                    _modal_assembly->set_base_solution(dXdp, true);
+                    _modal_assembly->set_base_solution(_sys->get_sensitivity_solution(0), true);
                     _sys->eigenproblem_sensitivity_solve(*_modal_elem_ops,
                                                          *_modal_assembly,
                                                          *_problem_parameters[i],
